@@ -93,3 +93,30 @@ class CanonicalEpisode {
   final String? title;
   final int? narrativeSeason;
 }
+
+/// Natural presentation ordering for provider/user volume labels. Raw labels
+/// remain untouched; only their relative order is derived.
+int compareNaturalVolumeLabels(String? left, String? right) {
+  if (left == right) return 0;
+  if (left == null || left.trim().isEmpty) return 1;
+  if (right == null || right.trim().isEmpty) return -1;
+  final leftNumber = _volumeNumber(left);
+  final rightNumber = _volumeNumber(right);
+  if (leftNumber != null && rightNumber != null) {
+    final compared = leftNumber.compareTo(rightNumber);
+    if (compared != 0) return compared;
+  } else if (leftNumber != null) {
+    return -1;
+  } else if (rightNumber != null) {
+    return 1;
+  }
+  final folded = left.toLowerCase().compareTo(right.toLowerCase());
+  return folded != 0 ? folded : left.compareTo(right);
+}
+
+double? _volumeNumber(String value) {
+  final match = RegExp(r'\d+(?:[.,]\d+)?').firstMatch(value);
+  return match == null
+      ? null
+      : double.tryParse(match.group(0)!.replaceAll(',', '.'));
+}

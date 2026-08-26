@@ -17,6 +17,7 @@ import '../../player/ui/anime_player_screen.dart';
 import '../../product_maturity/maturity_domain.dart';
 import '../../local_library/local_asset.dart';
 import '../../adapter_platform/adapter_sdk.dart';
+import '../smart_resume.dart';
 
 class MediaDetailsScreen extends StatefulWidget {
   const MediaDetailsScreen({
@@ -440,7 +441,7 @@ class _MediaDetailsScreenState extends State<MediaDetailsScreen> {
   }
 }
 
-class _DetailsBody extends StatelessWidget {
+class _DetailsBody extends StatefulWidget {
   const _DetailsBody({
     required this.details,
     required this.onLibrary,
@@ -470,19 +471,41 @@ class _DetailsBody extends StatelessWidget {
   final Future<void> Function(LocalAsset) onRepair;
 
   @override
+  State<_DetailsBody> createState() => _DetailsBodyState();
+}
+
+class _DetailsBodyState extends State<_DetailsBody> {
+  String? expandedChapterGroup;
+  bool descriptionExpanded = false;
+  bool metadataExpanded = false;
+
+  @override
   Widget build(BuildContext context) {
+    final details = widget.details;
+    final onLibrary = widget.onLibrary;
+    final onPreference = widget.onPreference;
+    final readerRepository = widget.readerRepository;
+    final onReaderClosed = widget.onReaderClosed;
+    final playbackRepository = widget.playbackRepository;
+    final onRefresh = widget.onRefresh;
+    final onEditChapter = widget.onEditChapter;
+    final onEditEpisode = widget.onEditEpisode;
+    final onRepair = widget.onRepair;
     final summary = details.summary;
     final media = summary.media;
     final installments = media is CanonicalManga
         ? details.chapters.length
         : details.episodes.length;
-    final volumes =
-        details.chapters
-            .map((item) => item.chapter.volumeLabel)
-            .whereType<String>()
-            .toSet()
-            .toList()
-          ..sort();
+    final chapterGroups = _chapterGroups(details);
+    expandedChapterGroup ??= _smartChapterGroup(
+      chapterGroups,
+      details.smartResume?.chapterId,
+    );
+    final chapterRows = <Object>[];
+    for (final group in chapterGroups) {
+      chapterRows.add(group);
+      if (group.key == expandedChapterGroup) chapterRows.addAll(group.items);
+    }
     return CustomScrollView(
       key: const Key('media-details'),
       slivers: [
@@ -548,33 +571,85 @@ class _DetailsBody extends StatelessWidget {
                     ),
                   ],
                 ),
+                const SizedBox(height: ZankaSpace.lg),
+                _SmartResumeCard(
+                  details: details,
+                  readerRepository: readerRepository,
+                  playbackRepository: playbackRepository,
+                  onClosed: onReaderClosed,
+                ),
                 if (media.description case final description?) ...[
                   const SizedBox(height: ZankaSpace.lg),
-                  Text(description.value),
-                ],
-                if (details.metadataOverride?.creatorOrStudio
-                    case final creator?)
-                  Padding(
-                    padding: const EdgeInsets.only(top: ZankaSpace.sm),
-                    child: Text(
-                      '${media is CanonicalAnime ? 'Studio' : 'Creator'}: $creator · Your edit',
+                  Semantics(
+                    expanded: descriptionExpanded,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          description.value,
+                          maxLines: descriptionExpanded ? null : 3,
+                          overflow: descriptionExpanded
+                              ? TextOverflow.visible
+                              : TextOverflow.ellipsis,
+                        ),
+                        TextButton.icon(
+                          key: const Key('description-toggle'),
+                          onPressed: () => setState(
+                            () => descriptionExpanded = !descriptionExpanded,
+                          ),
+                          icon: Icon(
+                            descriptionExpanded
+                                ? Icons.expand_less
+                                : Icons.expand_more,
+                          ),
+                          label: Text(
+                            descriptionExpanded ? 'Show less' : 'Show more',
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                if (media.alternateTitles.isNotEmpty) ...[
-                  const SizedBox(height: ZankaSpace.md),
-                  Text(
-                    'Also known as ${media.alternateTitles.map((item) => item.value).join(', ')}',
-                  ),
                 ],
-                if (media.genres.isNotEmpty) ...[
-                  const SizedBox(height: ZankaSpace.md),
-                  Wrap(
-                    spacing: ZankaSpace.sm,
-                    children: media.genres
-                        .map((genre) => Chip(label: Text(genre.value)))
-                        .toList(),
+                if (media.alternateTitles.isNotEmpty ||
+                    media.genres.isNotEmpty ||
+                    details.metadataOverride?.creatorOrStudio != null)
+                  ExpansionTile(
+                    key: const Key('optional-metadata'),
+                    initiallyExpanded: metadataExpanded,
+                    onExpansionChanged: (value) =>
+                        setState(() => metadataExpanded = value),
+                    tilePadding: EdgeInsets.zero,
+                    title: const Text('More information'),
+                    children: [
+                      if (details.metadataOverride?.creatorOrStudio
+                          case final creator?)
+                        ListTile(
+                          title: Text(
+                            media is CanonicalAnime ? 'Studio' : 'Creator',
+                          ),
+                          subtitle: Text(creator),
+                        ),
+                      if (media.alternateTitles.isNotEmpty)
+                        ListTile(
+                          title: const Text('Also known as'),
+                          subtitle: Text(
+                            media.alternateTitles
+                                .map((item) => item.value)
+                                .join(', '),
+                          ),
+                        ),
+                      if (media.genres.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: ZankaSpace.sm),
+                          child: Wrap(
+                            spacing: ZankaSpace.sm,
+                            children: media.genres
+                                .map((genre) => Chip(label: Text(genre.value)))
+                                .toList(),
+                          ),
+                        ),
+                    ],
                   ),
-                ],
                 if (summary.hasProgress) ...[
                   const ZankaSectionTitle('Current progress'),
                   Text(_progressText(summary)),
@@ -665,15 +740,6 @@ class _DetailsBody extends StatelessWidget {
                     },
                   ),
                 ],
-                if (volumes.isNotEmpty) ...[
-                  const ZankaSectionTitle('Volumes'),
-                  Wrap(
-                    spacing: ZankaSpace.sm,
-                    children: volumes
-                        .map((volume) => Chip(label: Text(volume)))
-                        .toList(),
-                  ),
-                ],
                 ZankaSectionTitle(
                   media is CanonicalManga ? 'Chapters' : 'Episodes',
                 ),
@@ -687,27 +753,54 @@ class _DetailsBody extends StatelessWidget {
         ),
         if (media is CanonicalManga)
           SliverList.builder(
-            itemCount: details.chapters.length,
-            itemBuilder: (context, index) => _ChapterTile(
-              availability: details.chapters[index],
-              readerAvailability: details.readerChapters
-                  .where(
-                    (item) =>
-                        item.chapter.id == details.chapters[index].chapter.id,
-                  )
-                  .firstOrNull,
-              preferred: details.preferredProvider,
-              mediaId: media.id,
-              readerRepository: readerRepository,
-              onReaderClosed: onReaderClosed,
-              isRead: details.chapterCompletions.any(
-                (value) =>
-                    value.chapterId == details.chapters[index].chapter.id,
-              ),
-              onChanged: onRefresh,
-              edit: details.chapterEdits[details.chapters[index].chapter.id],
-              onEdit: onEditChapter,
-            ),
+            itemCount: chapterRows.length,
+            itemBuilder: (context, index) {
+              final row = chapterRows[index];
+              if (row is _ChapterGroup) {
+                final read = row.items
+                    .where(
+                      (item) => details.chapterCompletions.any(
+                        (value) => value.chapterId == item.chapter.id,
+                      ),
+                    )
+                    .length;
+                final expanded = row.key == expandedChapterGroup;
+                return Semantics(
+                  expanded: expanded,
+                  child: ListTile(
+                    key: ValueKey('chapter-group-${row.key}'),
+                    title: Text(row.label),
+                    subtitle: Text('$read / ${row.items.length} read'),
+                    trailing: Icon(
+                      expanded ? Icons.expand_less : Icons.expand_more,
+                    ),
+                    onTap: () => setState(
+                      () => expandedChapterGroup = expanded ? null : row.key,
+                    ),
+                  ),
+                );
+              }
+              final chapter = row as ReaderChapterAvailability;
+              final availability = details.chapters
+                  .where((item) => item.chapter.id == chapter.chapter.id)
+                  .first;
+              return _ChapterTile(
+                availability: availability,
+                readerAvailability: chapter,
+                preferred: details.preferredProvider,
+                mediaId: media.id,
+                readerRepository: readerRepository,
+                onReaderClosed: onReaderClosed,
+                isRead: details.chapterCompletions.any(
+                  (value) => value.chapterId == chapter.chapter.id,
+                ),
+                onChanged: onRefresh,
+                edit: details.chapterEdits[chapter.chapter.id],
+                onEdit: onEditChapter,
+                isSmartTarget:
+                    details.smartResume?.chapterId == chapter.chapter.id,
+              );
+            },
           )
         else
           SliverList.builder(
@@ -731,6 +824,9 @@ class _DetailsBody extends StatelessWidget {
               onChanged: onRefresh,
               edit: details.episodeEdits[details.episodes[index].episode.id],
               onEdit: onEditEpisode,
+              isSmartTarget:
+                  details.smartResume?.episodeId ==
+                  details.episodes[index].episode.id,
             ),
           ),
         const SliverToBoxAdapter(child: SizedBox(height: ZankaSpace.xl)),
@@ -738,6 +834,174 @@ class _DetailsBody extends StatelessWidget {
     );
   }
 }
+
+class _ChapterGroup {
+  const _ChapterGroup(this.key, this.label, this.items);
+  final String key;
+  final String label;
+  final List<ReaderChapterAvailability> items;
+}
+
+List<_ChapterGroup> _chapterGroups(ProductMediaDetails details) {
+  final result = <_ChapterGroup>[];
+  final volumes = <String, List<ReaderChapterAvailability>>{};
+  final ungrouped = <ReaderChapterAvailability>[];
+  for (final item in details.readerChapters) {
+    final volume = item.chapter.volumeLabel?.trim();
+    if (volume == null || volume.isEmpty) {
+      ungrouped.add(item);
+    } else {
+      (volumes[volume] ??= []).add(item);
+    }
+  }
+  for (final entry in volumes.entries) {
+    result.add(_ChapterGroup('volume:${entry.key}', entry.key, entry.value));
+  }
+  for (var start = 0; start < ungrouped.length; start += 100) {
+    final end = (start + 100).clamp(0, ungrouped.length);
+    final values = ungrouped.sublist(start, end);
+    final first = values.first.chapter.number.rawLabel;
+    final last = values.last.chapter.number.rawLabel;
+    result.add(
+      _ChapterGroup(
+        'range:$start',
+        values.length == 1 ? first : '$first – $last',
+        values,
+      ),
+    );
+  }
+  return result;
+}
+
+String? _smartChapterGroup(
+  List<_ChapterGroup> groups,
+  CanonicalChapterId? chapterId,
+) {
+  if (groups.isEmpty) return null;
+  if (chapterId != null) {
+    for (final group in groups) {
+      if (group.items.any((item) => item.chapter.id == chapterId)) {
+        return group.key;
+      }
+    }
+  }
+  return groups.length == 1 ? groups.first.key : null;
+}
+
+class _SmartResumeCard extends StatelessWidget {
+  const _SmartResumeCard({
+    required this.details,
+    required this.readerRepository,
+    required this.playbackRepository,
+    required this.onClosed,
+  });
+  final ProductMediaDetails details;
+  final ReaderRepository? readerRepository;
+  final PlaybackRepository? playbackRepository;
+  final Future<void> Function() onClosed;
+
+  @override
+  Widget build(BuildContext context) {
+    final target = details.smartResume;
+    if (target == null) return const SizedBox.shrink();
+    final subtitle = _smartResumeSubtitle(details, target);
+    return Semantics(
+      button: target.hasAction,
+      label: [target.label, if (subtitle.isNotEmpty) subtitle].join(', '),
+      child: Card.filled(
+        color: Theme.of(context).colorScheme.primaryContainer,
+        child: ListTile(
+          key: const Key('smart-resume-cta'),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: ZankaSpace.md,
+            vertical: ZankaSpace.sm,
+          ),
+          leading: Icon(
+            target.action == SmartResumeAction.completed
+                ? Icons.check_circle
+                : details.summary.media is CanonicalManga
+                ? Icons.menu_book
+                : Icons.play_circle,
+            size: 34,
+          ),
+          title: Text(
+            target.label,
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
+          subtitle: subtitle.isEmpty ? null : Text(subtitle),
+          trailing: target.hasAction ? const Icon(Icons.arrow_forward) : null,
+          onTap: target.hasAction ? () => _open(context, target) : null,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _open(BuildContext context, SmartResumeTarget target) async {
+    if (target.chapterId case final chapterId?) {
+      if (readerRepository == null) return;
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => MangaReaderScreen(
+            repository: readerRepository!,
+            request: ReaderSessionRequest(
+              mediaId: details.summary.media.id,
+              chapterId: chapterId,
+              binding: target.chapterBinding,
+            ),
+          ),
+        ),
+      );
+    } else if (target.episodeId case final episodeId?) {
+      if (playbackRepository == null) return;
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => AnimePlayerScreen(
+            repository: playbackRepository!,
+            request: PlaybackSessionRequest(
+              mediaId: details.summary.media.id,
+              episodeId: episodeId,
+              binding: target.episodeBinding,
+            ),
+          ),
+        ),
+      );
+    }
+    await onClosed();
+  }
+}
+
+String _smartResumeSubtitle(
+  ProductMediaDetails details,
+  SmartResumeTarget target,
+) {
+  if (target.chapterId case final id?) {
+    final chapter = details.readerChapters
+        .where((item) => item.chapter.id == id)
+        .firstOrNull
+        ?.chapter;
+    final resume = target.pageResume;
+    return [
+      chapter?.number.rawLabel ?? 'Chapter',
+      if (resume != null)
+        'Page ${resume.pageIndex + 1}${resume.totalPages == null ? '' : ' / ${resume.totalPages}'}',
+    ].join(' · ');
+  }
+  if (target.episodeId case final id?) {
+    final episode = details.playbackEpisodes
+        .where((item) => item.episode.id == id)
+        .firstOrNull
+        ?.episode;
+    final position = target.playbackResume?.position;
+    return [
+      episode?.label.rawLabel ?? 'Episode',
+      if (position != null) _duration(position),
+    ].join(' · ');
+  }
+  return target.reason ?? '';
+}
+
+String _duration(Duration value) =>
+    '${value.inMinutes}:${value.inSeconds.remainder(60).toString().padLeft(2, '0')}';
 
 class _ChapterTile extends StatelessWidget {
   const _ChapterTile({
@@ -751,6 +1015,7 @@ class _ChapterTile extends StatelessWidget {
     required this.onChanged,
     required this.edit,
     required this.onEdit,
+    this.isSmartTarget = false,
   });
   final CanonicalChapterAvailability availability;
   final ProviderId? preferred;
@@ -762,6 +1027,7 @@ class _ChapterTile extends StatelessWidget {
   final Future<void> Function() onChanged;
   final ChapterUserEdit? edit;
   final Future<void> Function(ChapterUserEdit) onEdit;
+  final bool isSmartTarget;
   @override
   Widget build(BuildContext context) {
     final chapter = availability.chapter;
@@ -772,16 +1038,17 @@ class _ChapterTile extends StatelessWidget {
     return ListTile(
       key: ValueKey('chapter-${chapter.id.value}'),
       title: Text(edit?.rawLabel ?? chapter.number.rawLabel),
+      dense: true,
+      tileColor: isSmartTarget
+          ? Theme.of(context).colorScheme.secondaryContainer
+          : null,
       subtitle: Text(
         [
-          if (chapter.volumeLabel != null) chapter.volumeLabel!,
+          if (isRead) 'Read' else if (isSmartTarget) 'Up next',
+          if (readable.isNotEmpty) '${readable.length} readable',
+          if (retryable.isNotEmpty) '${retryable.length} retryable',
+          if (readable.isEmpty && retryable.isEmpty) 'Unavailable',
           'Sources: ${bindings.map((item) => _providerName(item.providerId)).join(', ')}',
-          if (readable.isEmpty) 'No readable source configured',
-          if (readable.isNotEmpty) '${readable.length} readable source(s)',
-          if (retryable.isNotEmpty)
-            '${retryable.length} source(s) available to retry',
-          if (edit != null) '${edit!.kind.name} · Your edit',
-          'Hold to edit',
         ].join(' · '),
       ),
       onLongPress: () => _editChapterDialog(
@@ -849,6 +1116,7 @@ class _EpisodeTile extends StatelessWidget {
     required this.onChanged,
     required this.edit,
     required this.onEdit,
+    this.isSmartTarget = false,
   });
   final CanonicalEpisodeAvailability availability;
   final ProviderId? preferred;
@@ -860,6 +1128,7 @@ class _EpisodeTile extends StatelessWidget {
   final Future<void> Function() onChanged;
   final EpisodeUserEdit? edit;
   final Future<void> Function(EpisodeUserEdit) onEdit;
+  final bool isSmartTarget;
   @override
   Widget build(BuildContext context) {
     final episode = availability.episode;
@@ -870,16 +1139,18 @@ class _EpisodeTile extends StatelessWidget {
     return ListTile(
       key: ValueKey('episode-${episode.id.value}'),
       title: Text(edit?.rawLabel ?? episode.label.rawLabel),
+      dense: true,
+      visualDensity: VisualDensity.compact,
+      tileColor: isSmartTarget
+          ? Theme.of(context).colorScheme.secondaryContainer
+          : null,
       subtitle: Text(
         [
+          if (isWatched) 'Watched' else if (isSmartTarget) 'Up next',
+          if (playable.isNotEmpty) '${playable.length} playable',
+          if (retryable.isNotEmpty) '${retryable.length} retryable',
+          if (playable.isEmpty && retryable.isEmpty) 'Unavailable',
           'Sources: ${bindings.map((item) => _providerName(item.providerId)).join(', ')}',
-          playable.isEmpty
-              ? 'No playback-capable source configured'
-              : '${playable.length} playable source(s)',
-          if (retryable.isNotEmpty)
-            '${retryable.length} source(s) available to retry',
-          if (edit != null) '${edit!.kind.name} · Your edit',
-          'Hold to edit',
         ].join(' · '),
       ),
       onLongPress: () => _editEpisodeDialog(

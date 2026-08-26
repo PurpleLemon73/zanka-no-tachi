@@ -88,6 +88,31 @@ void main() {
       expect(find.byKey(const Key('paged-reader')), findsOneWidget);
       expect(find.text('1 / 4 · Local folder'), findsOneWidget);
 
+      final zoomSurface = find.byKey(const Key('paged-zoom-surface')).first;
+      final center = tester.getCenter(zoomSurface);
+      final firstFinger = await tester.startGesture(
+        center - const Offset(24, 0),
+        pointer: 1,
+      );
+      final secondFinger = await tester.startGesture(
+        center + const Offset(24, 0),
+        pointer: 2,
+      );
+      await firstFinger.moveBy(const Offset(-80, 0));
+      await secondFinger.moveBy(const Offset(80, 0));
+      await firstFinger.up();
+      await secondFinger.up();
+      await tester.pump();
+      await tester.fling(
+        find.byKey(const Key('paged-reader')),
+        const Offset(-500, 0),
+        1200,
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('1 / 4 · Local folder'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('reset-page-zoom')));
+      await tester.pumpAndSettle();
+
       await tester.fling(
         find.byKey(const Key('paged-reader')),
         const Offset(-500, 0),

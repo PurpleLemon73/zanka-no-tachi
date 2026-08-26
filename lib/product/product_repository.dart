@@ -12,6 +12,7 @@ import 'product_models.dart';
 import '../reader/reader_repository.dart';
 import '../player/playback_repository.dart';
 import '../local_library/local_asset.dart';
+import 'smart_resume.dart';
 
 class ProductRepository {
   const ProductRepository(this.live, {this.reader, this.playback});
@@ -82,30 +83,65 @@ class ProductRepository {
     final id = await live.database.resolveCanonicalId(requestedId);
     final media = await live.database.effectiveMedia(id);
     if (media == null) return null;
+    final chapters = await live.availability.chapters(id);
+    final episodes = await live.availability.episodes(id);
+    final readerChapters = await reader?.chapters(id) ?? const [];
+    final playbackEpisodes = await playback?.episodes(id) ?? const [];
+    final preferred = await live.database.preferredProvider(id);
+    final chapterCompletions = await live.database.chapterCompletionsFor(id);
+    final episodeCompletions = await live.database.episodeCompletionsFor(id);
+    final mangaProgress = await live.database.mangaProgress(id);
+    final animeProgress = await live.database.animeProgress(id);
+    final smartResume = media is CanonicalManga
+        ? await SmartResumePolicy.manga(
+            chapters: readerChapters,
+            completed: chapterCompletions.map((item) => item.chapterId).toSet(),
+            progress: mangaProgress,
+            preferredProvider: preferred,
+            resumeFor: (binding) => live.database.mangaSourcePageResume(
+              binding.providerId,
+              binding.externalId,
+            ),
+          )
+        : await SmartResumePolicy.anime(
+            episodes: playbackEpisodes,
+            completed: episodeCompletions.map((item) => item.episodeId).toSet(),
+            progress: animeProgress,
+            preferredProvider: preferred,
+            resumeFor: (binding) => live.database.animeSourcePlaybackResume(
+              binding.providerId,
+              binding.externalId,
+            ),
+          );
     return ProductMediaDetails(
       summary: ProductMediaSummary(
         media: media,
         bindings: await live.database.mediaBindingsFor(id),
         library: await live.database.libraryEntry(id),
-        mangaProgress: await live.database.mangaProgress(id),
-        animeProgress: await live.database.animeProgress(id),
+        mangaProgress: mangaProgress,
+        animeProgress: animeProgress,
         progressLabel: await _progressLabel(id),
+        smartResume: smartResume,
       ),
-      chapters: await live.availability.chapters(id),
-      episodes: await live.availability.episodes(id),
-      readerChapters: await reader?.chapters(id) ?? const [],
-      playbackEpisodes: await playback?.episodes(id) ?? const [],
-      preferredProvider: await live.database.preferredProvider(id),
-      chapterCompletions: await live.database.chapterCompletionsFor(id),
-      episodeCompletions: await live.database.episodeCompletionsFor(id),
+      chapters: chapters,
+      episodes: episodes,
+      readerChapters: readerChapters,
+      playbackEpisodes: playbackEpisodes,
+      preferredProvider: preferred,
+      chapterCompletions: chapterCompletions,
+      episodeCompletions: episodeCompletions,
       chapterEdits: await live.database.chapterUserEditsFor(id),
       episodeEdits: await live.database.episodeUserEditsFor(id),
       localAssets: (await live.database.allLocalAssets())
           .where((asset) => asset.mediaId == id)
           .toList(),
       metadataOverride: await live.database.metadataOverride(id),
+      smartResume: smartResume,
     );
   }
+
+  Future<SmartResumeTarget?> smartResume(CanonicalMediaId id) async =>
+      (await details(id))?.smartResume;
 
   Future<String?> _progressLabel(CanonicalMediaId id) async {
     final manga = await live.database.mangaProgress(id);

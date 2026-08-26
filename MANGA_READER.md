@@ -1,5 +1,19 @@
 # Manga Reader — M5
 
+## M13 paged zoom and continuation update
+
+Paged LTR/RTL reading now uses a per-page `InteractiveViewer` with 1×–4× pinch
+zoom, pan while zoomed, centered double-tap toggle and an explicit reset action.
+PageView navigation is disabled during zoom/pan and the transform resets on page
+change. The transform is never persisted, so close/reopen retains the exact
+binding-specific logical page and canonical completion remains independent.
+Vertical mode deliberately remains on M10 rendered-page tracking.
+
+Details opens the reader through the shared `SmartResumePolicy`: Start selects
+the first actionable unread chapter, Resume prefers the binding with its own
+exact resume, and Next advances after canonical completion. It never maps page
+offsets to another scan.
+
 ## 1. Reader session boundary
 
 The product boundary is `CanonicalMediaId` → `CanonicalChapterId` → optional

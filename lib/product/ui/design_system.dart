@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../canonical/domain/media.dart';
 import '../product_models.dart';
+import '../../app/app_preferences.dart';
 
 abstract final class ZankaSpace {
   static const xs = 4.0;
@@ -18,9 +19,22 @@ abstract final class ZankaRadius {
   static const chip = 12.0;
 }
 
-ThemeData zankaTheme(Brightness brightness) {
+Color zankaAccentColor(ZankaAccent accent) => switch (accent) {
+  ZankaAccent.defaultRed => const Color(0xFFB53A32),
+  ZankaAccent.orange => const Color(0xFF9A4600),
+  ZankaAccent.green => const Color(0xFF386A20),
+  ZankaAccent.teal => const Color(0xFF006A60),
+  ZankaAccent.blue => const Color(0xFF245FA6),
+  ZankaAccent.indigo => const Color(0xFF4D5FA8),
+  ZankaAccent.purple => const Color(0xFF7A4E9D),
+};
+
+ThemeData zankaTheme(
+  Brightness brightness, {
+  ZankaAccent accent = ZankaAccent.defaultRed,
+}) {
   final scheme = ColorScheme.fromSeed(
-    seedColor: const Color(0xFFB53A32),
+    seedColor: zankaAccentColor(accent),
     brightness: brightness,
   );
   return ThemeData(

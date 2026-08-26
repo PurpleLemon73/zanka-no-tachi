@@ -36,6 +36,8 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
   bool controlsVisible = true;
   final Map<int, GlobalKey> verticalPageKeys = {};
   bool verticalTrackingReady = false;
+  bool pagedZoomed = false;
+  int zoomResetGeneration = 0;
 
   @override
   void initState() {
@@ -79,7 +81,10 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
 
   void _pageChanged(int page) {
     if (page == currentPage) return;
-    setState(() => currentPage = page);
+    setState(() {
+      currentPage = page;
+      pagedZoomed = false;
+    });
     final value = session;
     if (value != null) cache.prefetch(value.manifest, page);
     persistDebounce?.cancel();
@@ -422,15 +427,29 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                     ? PageView.builder(
                         key: const Key('paged-reader'),
                         controller: pageController,
+                        physics: pagedZoomed
+                            ? const NeverScrollableScrollPhysics()
+                            : const PageScrollPhysics(),
                         reverse:
                             value.preferences.direction ==
                             ReaderDirection.rightToLeft,
                         itemCount: value.manifest.pages.length,
                         onPageChanged: _pageChanged,
-                        itemBuilder: (_, index) => _ReaderPageView(
-                          page: value.manifest.pages[index],
-                          cache: cache,
-                          fit: value.preferences.fit,
+                        itemBuilder: (_, index) => _ZoomableReaderPage(
+                          key: ValueKey(
+                            'zoom-page-$index-$zoomResetGeneration',
+                          ),
+                          active: index == currentPage,
+                          onZoomChanged: (zoomed) {
+                            if (index == currentPage && pagedZoomed != zoomed) {
+                              setState(() => pagedZoomed = zoomed);
+                            }
+                          },
+                          child: _ReaderPageView(
+                            page: value.manifest.pages[index],
+                            cache: cache,
+                            fit: value.preferences.fit,
+                          ),
                         ),
                       )
                     : NotificationListener<ScrollNotification>(
@@ -483,6 +502,17 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                         style: const TextStyle(color: Colors.white),
                       ),
                     ),
+                    if (pagedZoomed)
+                      IconButton(
+                        key: const Key('reset-page-zoom'),
+                        tooltip: 'Reset page zoom',
+                        color: Colors.white,
+                        onPressed: () => setState(() {
+                          pagedZoomed = false;
+                          zoomResetGeneration++;
+                        }),
+                        icon: const Icon(Icons.zoom_out_map),
+                      ),
                     IconButton(
                       key: const Key('next-chapter'),
                       tooltip: 'Next chapter',
@@ -528,6 +558,90 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
       ),
     );
   }
+}
+
+class _ZoomableReaderPage extends StatefulWidget {
+  const _ZoomableReaderPage({
+    super.key,
+    required this.child,
+    required this.active,
+    required this.onZoomChanged,
+  });
+  final Widget child;
+  final bool active;
+  final ValueChanged<bool> onZoomChanged;
+
+  @override
+  State<_ZoomableReaderPage> createState() => _ZoomableReaderPageState();
+}
+
+class _ZoomableReaderPageState extends State<_ZoomableReaderPage> {
+  final TransformationController transformation = TransformationController();
+  bool zoomed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    transformation.addListener(_transformChanged);
+  }
+
+  void _transformChanged() =>
+      _setZoomed(transformation.value.getMaxScaleOnAxis() > 1.01);
+
+  @override
+  void didUpdateWidget(covariant _ZoomableReaderPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.active && !widget.active) _reset(notify: false);
+  }
+
+  void _setZoomed(bool value) {
+    if (zoomed == value) return;
+    setState(() => zoomed = value);
+    widget.onZoomChanged(value);
+  }
+
+  void _reset({bool notify = true}) {
+    transformation.value = Matrix4.identity();
+    if (zoomed) {
+      setState(() => zoomed = false);
+      if (notify) widget.onZoomChanged(false);
+    }
+  }
+
+  void _doubleTap() {
+    if (zoomed) {
+      _reset();
+    } else {
+      transformation.value = Matrix4.diagonal3Values(2.5, 2.5, 1);
+      _setZoomed(true);
+    }
+  }
+
+  @override
+  void dispose() {
+    transformation.removeListener(_transformChanged);
+    transformation.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+    key: const Key('paged-zoom-surface'),
+    behavior: HitTestBehavior.opaque,
+    onDoubleTap: _doubleTap,
+    child: InteractiveViewer(
+      transformationController: transformation,
+      minScale: 1,
+      maxScale: 4,
+      panEnabled: zoomed,
+      scaleEnabled: true,
+      clipBehavior: Clip.hardEdge,
+      onInteractionEnd: (_) {
+        if (transformation.value.getMaxScaleOnAxis() <= 1.01) _reset();
+      },
+      child: SizedBox.expand(child: widget.child),
+    ),
+  );
 }
 
 class _ReaderPageView extends StatefulWidget {

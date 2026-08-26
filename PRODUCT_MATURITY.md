@@ -189,3 +189,16 @@ background import/backup jobs, not provider extraction or distribution work.
     Library, and a 5,000-chapter Details list while watching for long stalls.
 17. Force-stop and relaunch once more; verify edits, completion, preferences,
     recent searches, progress, and exact source resumes remain.
+# M13 daily-use refinement
+
+Home and Details now share `SmartResumePolicy`, producing consistent Start,
+Resume, Next and Completed behavior from canonical completion and exact-binding
+resume. Details prioritizes that action, collapses descriptions and optional
+metadata, naturally orders volume labels, and keeps large manga/anime lists
+compact and lazy. Ungrouped chapter ranges remain presentation-only.
+
+Appearance now persists System/Light/Dark plus a curated Material 3 accent.
+Paged manga reading adds guarded pinch zoom/pan and double-tap/reset without
+changing logical page, completion or source-specific resume. Vertical mode
+retains the rendered-page-aware M10 implementation. Player engine, live-source
+reliability, local repair, backup and canonical editing semantics are unchanged.

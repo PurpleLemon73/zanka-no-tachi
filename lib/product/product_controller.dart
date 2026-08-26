@@ -15,6 +15,7 @@ import '../local_library/backup_service.dart';
 import '../adapter_platform/adapter_sdk.dart';
 import 'search_history_store.dart';
 import '../product_maturity/maturity_domain.dart';
+import 'smart_resume.dart';
 
 class ProductController extends ChangeNotifier {
   ProductController(
@@ -34,6 +35,7 @@ class ProductController extends ChangeNotifier {
   List<String> recentSearches = const [];
 
   List<ProductMediaSummary> persisted = const [];
+  Map<CanonicalMediaId, SmartResumeTarget> smartResumeTargets = const {};
   List<ProductSearchResult> discoverManga = const [];
   List<ProductSearchResult> discoverAnime = const [];
   List<ProductSearchResult> searchResults = const [];
@@ -61,7 +63,12 @@ class ProductController extends ChangeNotifier {
       persisted.where((item) => item.library?.isSaved ?? false).toList();
   List<ProductMediaSummary> get continueItems =>
       persisted
-          .where((item) => item.hasProgress && !item.progressCompleted)
+          .where(
+            (item) =>
+                item.hasProgress &&
+                smartResumeTargets[item.media.id]?.action !=
+                    SmartResumeAction.completed,
+          )
           .toList()
         ..sort((a, b) {
           final left = a.mangaProgress?.updatedAt ?? a.animeProgress?.updatedAt;
@@ -85,9 +92,23 @@ class ProductController extends ChangeNotifier {
     loadingLocal = true;
     notifyListeners();
     persisted = await repository.persisted();
+    final progressItems = persisted.where((item) => item.hasProgress).toList();
+    final targets = await Future.wait(
+      progressItems.map(
+        (item) async =>
+            (item.media.id, await repository.smartResume(item.media.id)),
+      ),
+    );
+    smartResumeTargets = {
+      for (final (id, target) in targets)
+        if (target != null) id: target,
+    };
     loadingLocal = false;
     notifyListeners();
   }
+
+  SmartResumeTarget? smartResumeFor(CanonicalMediaId id) =>
+      smartResumeTargets[id];
 
   Future<void> refreshDiscover() async {
     loadingDiscover = true;

@@ -89,7 +89,7 @@ class _ZankaAppState extends State<ZankaApp> {
   late final AppPreferencesStore preferences;
   late final LocalDiagnostics diagnostics;
   late final LiveMediaTransport liveMediaTransport;
-  bool? onboardingComplete;
+  AppPreferences? appPreferences;
 
   @override
   void initState() {
@@ -178,18 +178,36 @@ class _ZankaAppState extends State<ZankaApp> {
     if (widget.enableOnboarding ?? ownsRepository) {
       unawaited(_loadOnboarding());
     } else {
-      onboardingComplete = true;
+      appPreferences = const AppPreferences(onboardingComplete: true);
     }
   }
 
   Future<void> _loadOnboarding() async {
     final value = await preferences.load();
-    if (mounted) setState(() => onboardingComplete = value.onboardingComplete);
+    if (mounted) setState(() => appPreferences = value);
   }
 
   Future<void> _finishOnboarding() async {
     await preferences.completeOnboarding();
-    if (mounted) setState(() => onboardingComplete = true);
+    if (mounted) {
+      setState(
+        () =>
+            appPreferences = appPreferences?.copyWith(onboardingComplete: true),
+      );
+    }
+  }
+
+  Future<void> _setAppearance(
+    ZankaThemeMode themeMode,
+    ZankaAccent accent,
+  ) async {
+    await preferences.saveAppearance(themeMode: themeMode, accent: accent);
+    if (mounted) {
+      setState(
+        () => appPreferences = (appPreferences ?? const AppPreferences())
+            .copyWith(themeMode: themeMode, accent: accent),
+      );
+    }
   }
 
   @override
@@ -202,25 +220,40 @@ class _ZankaAppState extends State<ZankaApp> {
   }
 
   @override
-  Widget build(BuildContext context) => MaterialApp(
-    title: AppIdentity.displayName,
-    debugShowCheckedModeBanner: false,
-    theme: zankaTheme(Brightness.light),
-    darkTheme: zankaTheme(Brightness.dark),
-    themeMode: ThemeMode.system,
-    home: onboardingComplete == null
-        ? const Scaffold(body: Center(child: CircularProgressIndicator()))
-        : onboardingComplete == false
-        ? OnboardingScreen(onComplete: _finishOnboarding)
-        : ProductShell(
-            controller: productController,
-            developerBuilder: (_) => DeveloperSourcesScreen(
-              controller: controller,
-              diagnostics: diagnostics,
+  Widget build(BuildContext context) {
+    final current = appPreferences;
+    return MaterialApp(
+      title: AppIdentity.displayName,
+      debugShowCheckedModeBanner: false,
+      theme: zankaTheme(
+        Brightness.light,
+        accent: current?.accent ?? ZankaAccent.defaultRed,
+      ),
+      darkTheme: zankaTheme(
+        Brightness.dark,
+        accent: current?.accent ?? ZankaAccent.defaultRed,
+      ),
+      themeMode: switch (current?.themeMode ?? ZankaThemeMode.system) {
+        ZankaThemeMode.system => ThemeMode.system,
+        ZankaThemeMode.light => ThemeMode.light,
+        ZankaThemeMode.dark => ThemeMode.dark,
+      },
+      home: current == null
+          ? const Scaffold(body: Center(child: CircularProgressIndicator()))
+          : current.onboardingComplete == false
+          ? OnboardingScreen(onComplete: _finishOnboarding)
+          : ProductShell(
+              controller: productController,
+              developerBuilder: (_) => DeveloperSourcesScreen(
+                controller: controller,
+                diagnostics: diagnostics,
+              ),
+              aboutBuilder: (_) => AboutZankaScreen(diagnostics: diagnostics),
+              appearance: current,
+              onAppearanceChanged: _setAppearance,
             ),
-            aboutBuilder: (_) => AboutZankaScreen(diagnostics: diagnostics),
-          ),
-  );
+    );
+  }
 }
 
 class _UnavailableLiveMediaTransport implements LiveMediaTransport {

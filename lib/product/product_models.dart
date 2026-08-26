@@ -10,6 +10,7 @@ import '../player/playback_repository.dart';
 import '../adapter_platform/adapter_sdk.dart';
 import '../product_maturity/maturity_domain.dart';
 import '../local_library/local_asset.dart';
+import 'smart_resume.dart';
 
 class ProductMediaSummary {
   const ProductMediaSummary({
@@ -21,6 +22,7 @@ class ProductMediaSummary {
     this.progressLabel,
     this.progressCompleted = false,
     this.hasMissingLocalSource = false,
+    this.smartResume,
   });
 
   final CanonicalMedia media;
@@ -31,6 +33,7 @@ class ProductMediaSummary {
   final String? progressLabel;
   final bool progressCompleted;
   final bool hasMissingLocalSource;
+  final SmartResumeTarget? smartResume;
 
   bool get isSaved => library?.isSaved ?? false;
   bool get isFavorite => library?.isFavorite ?? false;
@@ -51,6 +54,7 @@ class ProductMediaDetails {
     this.episodeEdits = const {},
     this.localAssets = const [],
     this.metadataOverride,
+    this.smartResume,
   });
 
   final ProductMediaSummary summary;
@@ -65,6 +69,7 @@ class ProductMediaDetails {
   final Map<CanonicalEpisodeId, EpisodeUserEdit> episodeEdits;
   final List<LocalAsset> localAssets;
   final MetadataOverride? metadataOverride;
+  final SmartResumeTarget? smartResume;
 }
 
 class ProductSearchResult {

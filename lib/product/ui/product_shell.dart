@@ -8,6 +8,8 @@ import '../product_models.dart';
 import 'design_system.dart';
 import 'media_details_screen.dart';
 import 'local_media_screen.dart';
+import '../../app/app_preferences.dart';
+import '../smart_resume.dart';
 
 class ProductShell extends StatelessWidget {
   const ProductShell({
@@ -15,10 +17,14 @@ class ProductShell extends StatelessWidget {
     required this.controller,
     required this.developerBuilder,
     required this.aboutBuilder,
+    required this.appearance,
+    required this.onAppearanceChanged,
   });
   final ProductController controller;
   final WidgetBuilder developerBuilder;
   final WidgetBuilder aboutBuilder;
+  final AppPreferences appearance;
+  final Future<void> Function(ZankaThemeMode, ZankaAccent) onAppearanceChanged;
 
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
@@ -32,6 +38,8 @@ class ProductShell extends StatelessWidget {
           controller: controller,
           developerBuilder: developerBuilder,
           aboutBuilder: aboutBuilder,
+          appearance: appearance,
+          onAppearanceChanged: onAppearanceChanged,
         ),
       ];
       const destinations = [
@@ -571,10 +579,14 @@ class SettingsScreen extends StatelessWidget {
     required this.controller,
     required this.developerBuilder,
     required this.aboutBuilder,
+    required this.appearance,
+    required this.onAppearanceChanged,
   });
   final ProductController controller;
   final WidgetBuilder developerBuilder;
   final WidgetBuilder aboutBuilder;
+  final AppPreferences appearance;
+  final Future<void> Function(ZankaThemeMode, ZankaAccent) onAppearanceChanged;
 
   @override
   Widget build(BuildContext context) => CustomScrollView(
@@ -588,12 +600,49 @@ class SettingsScreen extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text('Appearance', style: Theme.of(context).textTheme.titleLarge),
-              const ListTile(
-                leading: Icon(Icons.brightness_auto),
-                title: Text('System appearance'),
-                subtitle: Text(
-                  'Zanka follows your device light or dark theme.',
-                ),
+              SegmentedButton<ZankaThemeMode>(
+                segments: const [
+                  ButtonSegment(
+                    value: ZankaThemeMode.system,
+                    label: Text('System'),
+                    icon: Icon(Icons.brightness_auto),
+                  ),
+                  ButtonSegment(
+                    value: ZankaThemeMode.light,
+                    label: Text('Light'),
+                    icon: Icon(Icons.light_mode_outlined),
+                  ),
+                  ButtonSegment(
+                    value: ZankaThemeMode.dark,
+                    label: Text('Dark'),
+                    icon: Icon(Icons.dark_mode_outlined),
+                  ),
+                ],
+                selected: {appearance.themeMode},
+                onSelectionChanged: (value) =>
+                    onAppearanceChanged(value.first, appearance.accent),
+              ),
+              const SizedBox(height: ZankaSpace.md),
+              Text(
+                'Accent color',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              Wrap(
+                spacing: ZankaSpace.sm,
+                runSpacing: ZankaSpace.sm,
+                children: [
+                  for (final accent in ZankaAccent.values)
+                    ChoiceChip(
+                      key: ValueKey('accent-${accent.name}'),
+                      avatar: CircleAvatar(
+                        backgroundColor: zankaAccentColor(accent),
+                      ),
+                      label: Text(_accentLabel(accent)),
+                      selected: appearance.accent == accent,
+                      onSelected: (_) =>
+                          onAppearanceChanged(appearance.themeMode, accent),
+                    ),
+                ],
               ),
               const SizedBox(height: ZankaSpace.lg),
               Text('Sources', style: Theme.of(context).textTheme.titleLarge),
@@ -767,7 +816,13 @@ class _HorizontalSummaries extends StatelessWidget {
                             overflow: TextOverflow.ellipsis,
                           ),
                           const SizedBox(height: ZankaSpace.sm),
-                          if (showProgress) Text(_progressLabel(item)),
+                          if (showProgress)
+                            Text(
+                              _progressLabel(
+                                item,
+                                controller.smartResumeFor(item.media.id),
+                              ),
+                            ),
                           Text(
                             '${item.bindings.length} source${item.bindings.length == 1 ? '' : 's'}',
                           ),
@@ -946,13 +1001,18 @@ Future<void> _openDetails(
   await controller.refreshLocal();
 }
 
-String _progressLabel(ProductMediaSummary item) {
+String _progressLabel(ProductMediaSummary item, [SmartResumeTarget? target]) {
+  final action = target?.label;
   if (item.mangaProgress case final progress?) {
     final total = progress.totalPages;
     final page = total == null
         ? 'Page ${progress.pageIndex + 1}'
         : 'Page ${progress.pageIndex + 1} of $total';
-    return '${item.progressLabel ?? 'Chapter'} · $page';
+    return [
+      if (action != null) action,
+      item.progressLabel ?? 'Chapter',
+      page,
+    ].join(' · ');
   }
   if (item.animeProgress case final progress?) {
     final minutes = progress.position.inMinutes;
@@ -960,7 +1020,11 @@ String _progressLabel(ProductMediaSummary item) {
         .remainder(60)
         .toString()
         .padLeft(2, '0');
-    return '${item.progressLabel ?? 'Episode'} · $minutes:$seconds watched';
+    return [
+      if (action != null) action,
+      item.progressLabel ?? 'Episode',
+      '$minutes:$seconds',
+    ].join(' · ');
   }
   return '';
 }
@@ -973,3 +1037,13 @@ String _searchMediaLabel(ProductSearchResult result) {
     CanonicalAnime(:final format) => '${format.name} · ${media.status.name}',
   };
 }
+
+String _accentLabel(ZankaAccent accent) => switch (accent) {
+  ZankaAccent.defaultRed => 'Default',
+  ZankaAccent.orange => 'Orange',
+  ZankaAccent.green => 'Green',
+  ZankaAccent.teal => 'Teal',
+  ZankaAccent.blue => 'Blue',
+  ZankaAccent.indigo => 'Indigo',
+  ZankaAccent.purple => 'Purple',
+};

@@ -62,6 +62,11 @@ class ReaderRepository {
         );
         if (compared != 0) return compared;
       }
+      final volume = compareNaturalVolumeLabels(
+        left.volumeLabel,
+        right.volumeLabel,
+      );
+      if (volume != 0) return volume;
       return _compareChapters(left, right);
     });
     return Future.wait(
