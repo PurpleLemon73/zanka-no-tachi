@@ -1,0 +1,84 @@
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# The .vscode folder contains launch configuration and tasks you configure in
+# VS Code which you may wish to be included in version control, so this line
+# is commented out by default.
+#.vscode/
+
+# Flutter/Dart/Pub related
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+/build/
+/coverage/
+
+# Symbolication related
+app.*.symbols
+
+# Obfuscation related
+app.*.map.json
+
+# Android Studio will place build artifacts here
+/android/app/debug
+/android/app/profile
+/android/app/release
+
+# Zanka local/private state and imported content
+*.sqlite
+*.sqlite3
+*.db
+*.db-shm
+*.db-wal
+*.zanka-backup.zip
+*.cbz
+*.cbr
+*.mkv
+*.mov
+*.webm
+*.mp4
+!assets/sample_anime/*.mp4
+local-media/
+imported-media/
+thumbnail-cache/
+diagnostics.json
+app-settings.json
+reader-preferences.json
+playback-preferences.json
+*.partial
+.partial-*
+.folder-import-*
+
+# Credentials and release signing material
+.env
+.env.*
+!.env.example
+*.pem
+*.p12
+*.mobileprovision
+key.properties
+*.jks
+*.keystore
+
+# Local release products
+/artifacts/
