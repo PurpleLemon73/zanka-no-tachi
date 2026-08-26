@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Broad, intentional Z / sword-cut bands. -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M18,24 L88,24 L82,31 L42,52 L75,52 L69,59 L29,59 L82,31 L18,31 Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M39,62 L72,62 L27,86 L20,86 L27,79 L59,62 Z" />
+    <!-- Head, shoulders, arms and complete robe silhouette. -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M50,29 C50,24.5 52.4,21.5 56,21.5 C59.6,21.5 62,24.5 62,29 L61,34 L68,38 L76,43 L84,51 L80,56 L72,50 L69,45 L66,47 L69,62 L75,82 L66,84 L62,73 L61,88 L56,91 L51,88 L50,73 L46,84 L37,82 L43,62 L46,47 L43,45 L40,51 L30,57 L27,52 L36,43 L44,38 L51,34 Z" />
+    <!-- Sword and hand: kept bold enough for launcher scale. -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M29,53 L31,58 L13,67 L10,65 L27,55 Z M29,52 L42,48 L43,51 L31,57 Z" />
+    <!-- Two distinct feet; the center notch remains negative space. -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M50,84 L55,87 L54,94 L47,94 L47,91 Z M58,87 L63,84 L66,91 L65,94 L58,94 Z" />
+</vector>
