@@ -210,7 +210,7 @@ real pre-M0 user data must be retained.
 
 ## Manual validation procedure
 
-1. Run `flutter run` on Android, iOS, macOS, Linux, or Windows with Internet
+1. Run `flutter run` on Android, iOS, Linux, Windows, or web with Internet
    access. The app opens directly on `Developer Sources`.
 2. Confirm both provider panels show their configured URLs and are enabled.
 3. Select `Check` once for each provider. Expect `available`; otherwise read the
