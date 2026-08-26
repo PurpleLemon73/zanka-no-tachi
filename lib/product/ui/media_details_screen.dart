@@ -36,6 +36,7 @@ class MediaDetailsScreen extends StatefulWidget {
 class _MediaDetailsScreenState extends State<MediaDetailsScreen> {
   ProductMediaDetails? details;
   Object? error;
+  bool refreshing = false;
 
   @override
   void initState() {
@@ -50,6 +51,30 @@ class _MediaDetailsScreenState extends State<MediaDetailsScreen> {
       if (mounted) setState(() => details = value);
     } on Object catch (value) {
       if (mounted) setState(() => error = value);
+    }
+  }
+
+  Future<void> _refreshSources() async {
+    if (refreshing) return;
+    setState(() => refreshing = true);
+    try {
+      final value = await widget.controller.refreshDetails(widget.mediaId);
+      if (!mounted) return;
+      setState(() => details = value);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Source details refreshed.')),
+      );
+    } on Object {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Source details could not be refreshed. Your saved state is unchanged.',
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => refreshing = false);
     }
   }
 
@@ -316,6 +341,18 @@ class _MediaDetailsScreenState extends State<MediaDetailsScreen> {
       appBar: AppBar(
         title: Text(value?.summary.media.title.value ?? 'Media details'),
         actions: [
+          if (value != null)
+            IconButton(
+              key: const Key('refresh-source-details'),
+              tooltip: 'Refresh source details',
+              onPressed: refreshing ? null : _refreshSources,
+              icon: refreshing
+                  ? const SizedBox.square(
+                      dimension: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.refresh),
+            ),
           if (value != null)
             IconButton(
               key: const Key('edit-metadata'),
@@ -730,6 +767,8 @@ class _ChapterTile extends StatelessWidget {
     final chapter = availability.chapter;
     final bindings = availability.sourceBindings;
     final readable = readerAvailability?.readableBindings ?? const [];
+    final retryable = readerAvailability?.retryableBindings ?? const [];
+    final openable = readerAvailability?.openableBindings ?? const [];
     return ListTile(
       key: ValueKey('chapter-${chapter.id.value}'),
       title: Text(edit?.rawLabel ?? chapter.number.rawLabel),
@@ -739,6 +778,8 @@ class _ChapterTile extends StatelessWidget {
           'Sources: ${bindings.map((item) => _providerName(item.providerId)).join(', ')}',
           if (readable.isEmpty) 'No readable source configured',
           if (readable.isNotEmpty) '${readable.length} readable source(s)',
+          if (retryable.isNotEmpty)
+            '${retryable.length} source(s) available to retry',
           if (edit != null) '${edit!.kind.name} · Your edit',
           'Hold to edit',
         ].join(' · '),
@@ -762,7 +803,7 @@ class _ChapterTile extends StatelessWidget {
                 await onChanged();
               },
       ),
-      onTap: readable.isEmpty || readerRepository == null
+      onTap: openable.isEmpty || readerRepository == null
           ? () => _placeholder(
               context,
               title: chapter.number.rawLabel,
@@ -772,7 +813,7 @@ class _ChapterTile extends StatelessWidget {
               preferred: preferred,
             )
           : () async {
-              final chosen = readable
+              final chosen = openable
                   .where((binding) => binding.providerId == preferred)
                   .firstOrNull;
               await Navigator.of(context).push(
@@ -824,6 +865,8 @@ class _EpisodeTile extends StatelessWidget {
     final episode = availability.episode;
     final bindings = availability.sourceBindings;
     final playable = playbackAvailability?.playableBindings ?? const [];
+    final retryable = playbackAvailability?.retryableBindings ?? const [];
+    final openable = playbackAvailability?.openableBindings ?? const [];
     return ListTile(
       key: ValueKey('episode-${episode.id.value}'),
       title: Text(edit?.rawLabel ?? episode.label.rawLabel),
@@ -833,6 +876,8 @@ class _EpisodeTile extends StatelessWidget {
           playable.isEmpty
               ? 'No playback-capable source configured'
               : '${playable.length} playable source(s)',
+          if (retryable.isNotEmpty)
+            '${retryable.length} source(s) available to retry',
           if (edit != null) '${edit!.kind.name} · Your edit',
           'Hold to edit',
         ].join(' · '),
@@ -856,7 +901,7 @@ class _EpisodeTile extends StatelessWidget {
                 await onChanged();
               },
       ),
-      onTap: playable.isEmpty || playbackRepository == null
+      onTap: openable.isEmpty || playbackRepository == null
           ? () => _placeholder(
               context,
               title: episode.label.rawLabel,
@@ -866,7 +911,7 @@ class _EpisodeTile extends StatelessWidget {
               preferred: preferred,
             )
           : () async {
-              final chosen = playable
+              final chosen = openable
                   .where((binding) => binding.providerId == preferred)
                   .firstOrNull;
               await Navigator.of(context).push(

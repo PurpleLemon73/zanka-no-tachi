@@ -8,6 +8,10 @@ abstract interface class ReaderSourceResolver {
   Future<ReaderManifest> resolve(ReaderSessionRequest request);
 }
 
+/// Opt-in for remote sources whose ephemeral manifest may safely be resolved
+/// once more after a temporary session-open failure.
+abstract interface class FreshReaderManifestRetry {}
+
 class ReaderSourceRegistry {
   ReaderSourceRegistry(Iterable<ReaderSourceResolver> resolvers)
     : _resolvers = {

@@ -4,6 +4,10 @@ This project follows Semantic Versioning.
 
 ## [Unreleased]
 
+- Hardened live MangaWorld reading and AnimeWorld direct-MP4 playback across a
+  representative compatibility matrix with per-installment truth, one bounded
+  fresh-manifest retry, actionable source failure/switch UX, sanitized media
+  diagnostics, and normal Details metadata refresh.
 - Added stable-ID post-import chapter/episode editing and reversible expanded
   metadata overrides.
 - Added rendered-page reader resume, read/unread, watched/unwatched, and safe

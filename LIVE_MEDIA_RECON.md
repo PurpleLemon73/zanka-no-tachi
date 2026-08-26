@@ -1,5 +1,19 @@
 # M11 Live Media Reconnaissance
 
+## M12 representative follow-up — 2026-08-26
+
+Sparse follow-up expanded MangaWorld reader evidence to four titles with sampled
+manifests of 18, 64, 26, and 179 pages, covering grouped/ungrouped lists, a
+completed title, ongoing/very-long catalogs, decimal chapters and an observed
+oneshot label. The same first-image plus ordered JSON-list contract held. No
+naturally different CDN authority was encountered.
+
+AnimeWorld follow-up inspected five player documents spanning completed dubbed
+TV, Movie, OVA, ONA and ongoing long TV. Every sample declared direct MP4. No
+HLS, DASH, alternate iframe delivery, or reliable selectable track was observed.
+Consequently M12 narrows supported live delivery to verified MP4 and classifies
+other/iframe shapes as unsupported until evidence changes.
+
 Evidence date: 2026-08-25/26. Requests were sparse and limited to configured
 provider authorities, public documents referenced by them, and 2 KiB range
 checks of resulting media. No login, CAPTCHA, anti-bot challenge, access-control

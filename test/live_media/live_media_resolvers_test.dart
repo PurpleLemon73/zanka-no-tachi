@@ -8,6 +8,7 @@ import 'package:zanka_no_tachi/canonical/domain/identifiers.dart';
 import 'package:zanka_no_tachi/canonical/domain/media.dart';
 import 'package:zanka_no_tachi/live_media/animeworld_playback_source.dart';
 import 'package:zanka_no_tachi/live_media/live_media_transport.dart';
+import 'package:zanka_no_tachi/live_media/live_media_diagnostics.dart';
 import 'package:zanka_no_tachi/live_media/mangaworld_reader_source.dart';
 import 'package:zanka_no_tachi/live_provider/provider_registry.dart';
 import 'package:zanka_no_tachi/player/playback_domain.dart';
@@ -18,6 +19,7 @@ const chapterId = CanonicalChapterId('chapter');
 const episodeId = CanonicalEpisodeId('episode');
 
 void main() {
+  setUp(LiveMediaDiagnostics.instance.clearForTests);
   final mangaConfig = ProviderConfig(
     id: mangaWorldProviderId,
     displayName: 'MangaWorld',
@@ -115,6 +117,71 @@ void main() {
   });
 
   test(
+    'MangaWorld accepts lazy absolute and relative refs and removes duplicates',
+    () {
+      final pages = parseMangaWorldPages('''
+        <div id="reader"><img data-src="https://cdn.fixture.invalid/book/ch/1.jpg"></div>
+        <script>window.chapter = {"pages":["1.jpg","2.png","2.png",42,
+          "https://other.fixture.invalid/page-3.webp","notes.txt","bad\\u0000.jpg"]};</script>
+        ''', Uri.parse('https://www.fixture.invalid/read/chapter'));
+      expect(pages.map((value) => value.toString()), [
+        'https://cdn.fixture.invalid/book/ch/1.jpg',
+        'https://cdn.fixture.invalid/book/ch/2.png',
+        'https://other.fixture.invalid/page-3.webp',
+      ]);
+    },
+  );
+
+  test(
+    'MangaWorld page failure refreshes once at the same logical page',
+    () async {
+      final html = _fixture('mangaworld/chapter_reader_public.html');
+      final transport = _SequenceTransport({
+        '/manga/work/read/chapter-token': [html, html],
+        'https://cdn.fixture.invalid/chapters/work/volume-03/chapter-10/2.png':
+            [
+              LiveMediaResponse(
+                statusCode: 404,
+                bytes: Uint8List(0),
+                finalUri: Uri.parse('https://cdn.fixture.invalid/missing'),
+              ),
+              'recovered-two',
+            ],
+      });
+      final resolver = MangaWorldReaderSource(
+        config: mangaConfig,
+        transport: transport,
+      );
+      const binding = ChapterSourceBinding(
+        canonicalId: chapterId,
+        providerId: mangaWorldProviderId,
+        externalId: 'chapter-token',
+        relativeLocator: '/manga/work/read/chapter-token',
+      );
+      final manifest = await resolver.resolve(
+        const ReaderSessionRequest(
+          mediaId: mediaId,
+          chapterId: chapterId,
+          binding: binding,
+        ),
+      );
+      expect(utf8.decode(await manifest.pages[1].loadBytes()), 'recovered-two');
+      expect(
+        transport.requests
+            .where((value) => value.uri.path.contains('/read/'))
+            .length,
+        2,
+      );
+      final diagnostic = LiveMediaDiagnostics.instance.forBinding(
+        mangaWorldProviderId,
+        binding.externalId,
+      );
+      expect(diagnostic.freshRetryRecovered, isTrue);
+      expect(diagnostic.state, LiveManifestState.available);
+    },
+  );
+
+  test(
     'AnimeWorld resolves public JSON and iframe to MP4 with headers',
     () async {
       final transport = _FakeTransport({
@@ -171,6 +238,134 @@ void main() {
         ),
       ),
     );
+  });
+
+  test('AnimeWorld rejects unverified public delivery formats truthfully', () {
+    for (final html in [
+      '<video><source src="manifest.m3u8" type="application/vnd.apple.mpegurl"></video>',
+      '<iframe src="/different-player"></iframe>',
+    ]) {
+      expect(
+        () => parseAnimeWorldMedia(
+          html,
+          Uri.parse('https://anime.fixture.invalid/player'),
+        ),
+        throwsA(
+          isA<PlaybackException>().having(
+            (error) => error.kind,
+            'kind',
+            PlaybackErrorKind.unsupportedFormat,
+          ),
+        ),
+      );
+    }
+  });
+
+  test(
+    'live capability is binding-specific and temporary failures recover',
+    () {
+      const failed = ChapterSourceBinding(
+        canonicalId: chapterId,
+        providerId: mangaWorldProviderId,
+        externalId: 'failed',
+        relativeLocator: '/read/failed',
+      );
+      const untouched = ChapterSourceBinding(
+        canonicalId: chapterId,
+        providerId: mangaWorldProviderId,
+        externalId: 'untouched',
+        relativeLocator: '/read/untouched',
+      );
+      final resolver = MangaWorldReaderSource(
+        config: mangaConfig,
+        transport: _ThrowingTransport(),
+      );
+      LiveMediaDiagnostics.instance.record(
+        mangaWorldProviderId,
+        LiveManifestState.networkFailure,
+        'sanitized failure',
+        externalId: failed.externalId,
+      );
+      expect(
+        resolver.capability(failed),
+        ReaderSourceCapability.temporarilyUnavailable,
+      );
+      expect(
+        resolver.capability(untouched),
+        ReaderSourceCapability.readerCapable,
+      );
+      LiveMediaDiagnostics.instance.record(
+        mangaWorldProviderId,
+        LiveManifestState.available,
+        'resolved',
+        externalId: failed.externalId,
+        mediaType: 'image',
+      );
+      expect(resolver.capability(failed), ReaderSourceCapability.readerCapable);
+    },
+  );
+
+  test('disabled live media sources never perform a request', () async {
+    final mangaTransport = _FakeTransport({});
+    final manga = MangaWorldReaderSource(
+      config: mangaConfig.copyWith(enabled: false),
+      transport: mangaTransport,
+    );
+    await expectLater(
+      manga.resolve(
+        const ReaderSessionRequest(
+          mediaId: mediaId,
+          chapterId: chapterId,
+          binding: ChapterSourceBinding(
+            canonicalId: chapterId,
+            providerId: mangaWorldProviderId,
+            externalId: 'disabled',
+            relativeLocator: '/read/disabled',
+          ),
+        ),
+      ),
+      throwsA(isA<ReaderException>()),
+    );
+    expect(mangaTransport.requests, isEmpty);
+
+    final animeTransport = _FakeTransport({});
+    final anime = AnimeWorldPlaybackSource(
+      config: animeConfig.copyWith(enabled: false),
+      transport: animeTransport,
+    );
+    await expectLater(
+      anime.resolve(
+        const PlaybackSessionRequest(
+          mediaId: mediaId,
+          episodeId: episodeId,
+          binding: EpisodeSourceBinding(
+            canonicalId: episodeId,
+            providerId: animeWorldProviderId,
+            externalId: 'disabled',
+            relativeLocator: '/play/disabled',
+          ),
+        ),
+      ),
+      throwsA(isA<PlaybackException>()),
+    );
+    expect(animeTransport.requests, isEmpty);
+  });
+
+  test('live diagnostics redact locators and session values', () {
+    LiveMediaDiagnostics.instance.record(
+      animeWorldProviderId,
+      LiveManifestState.networkFailure,
+      'failed https://media.invalid/video.mp4?id=secret token=abc cookie=session',
+      externalId: 'not-displayed',
+    );
+    final summary = LiveMediaDiagnostics.instance
+        .forProvider(animeWorldProviderId)
+        .summary!;
+    expect(summary, isNot(contains('media.invalid')));
+    expect(summary, isNot(contains('secret')));
+    expect(summary, isNot(contains('abc')));
+    expect(summary, isNot(contains('session')));
+    expect(summary, contains('[redacted]'));
   });
 
   test(
@@ -287,6 +482,48 @@ class _ThrowingTransport implements LiveMediaTransport {
     Uri uri, {
     Map<String, String> headers = const {},
   }) => throw const SocketException('offline');
+  @override
+  void close() {}
+}
+
+class _SequenceTransport implements LiveMediaTransport {
+  _SequenceTransport(this.responses);
+  final Map<String, List<Object>> responses;
+  final List<_Request> requests = [];
+
+  @override
+  Future<LiveMediaResponse> get(
+    Uri uri, {
+    Map<String, String> headers = const {},
+  }) async {
+    requests.add(_Request(uri, headers));
+    final values = responses[uri.toString()] ?? responses[uri.path];
+    if (values == null || values.isEmpty) {
+      return LiveMediaResponse(
+        statusCode: 404,
+        bytes: Uint8List(0),
+        finalUri: uri,
+      );
+    }
+    final value = values.removeAt(0);
+    if (value is LiveMediaResponse) {
+      return LiveMediaResponse(
+        statusCode: value.statusCode,
+        bytes: value.bytes,
+        finalUri: uri,
+        headers: value.headers,
+      );
+    }
+    final text = value as String;
+    final media = RegExp(r'\.(?:jpe?g|png|webp)$').hasMatch(uri.path);
+    return LiveMediaResponse(
+      statusCode: 200,
+      bytes: Uint8List.fromList(utf8.encode(text)),
+      finalUri: uri,
+      headers: {'content-type': media ? 'image/png' : 'text/html'},
+    );
+  }
+
   @override
   void close() {}
 }

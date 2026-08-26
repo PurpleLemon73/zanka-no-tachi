@@ -276,7 +276,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
             const Text(
               'Each scan keeps its own page resume. A new source starts at page 1; exact page equivalence is not assumed.',
             ),
-            ...chapter.readableBindings.map(
+            ...chapter.openableBindings.map(
               (binding) => ListTile(
                 selected:
                     binding.providerId == value.manifest.binding.providerId &&
@@ -322,7 +322,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
           ),
         ),
       );
-    } else if (chapter.readableBindings.isEmpty) {
+    } else if (chapter.openableBindings.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
@@ -356,9 +356,11 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                 (chapter) => ListTile(
                   title: Text(chapter.chapter.number.rawLabel),
                   subtitle: Text(
-                    '${chapter.readableBindings.length} readable source(s)',
+                    chapter.readableBindings.isNotEmpty
+                        ? '${chapter.readableBindings.length} readable source(s)'
+                        : '${chapter.retryableBindings.length} source(s) to retry',
                   ),
-                  enabled: chapter.readableBindings.isNotEmpty,
+                  enabled: chapter.openableBindings.isNotEmpty,
                   selected: chapter.chapter.id == value.chapter.id,
                   onTap: () {
                     Navigator.pop(context);
@@ -406,7 +408,11 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
               )
             : null,
         body: error != null
-            ? _ReaderError(error: error!, retry: () => _open(widget.request))
+            ? _ReaderError(
+                error: error!,
+                retry: () => _open(widget.request),
+                alternate: _openAlternate,
+              )
             : value == null
             ? const Center(child: CircularProgressIndicator())
             : GestureDetector(
@@ -491,6 +497,37 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
       ),
     );
   }
+
+  Future<void> _openAlternate() async {
+    final chapters = await widget.repository.chapters(widget.request.mediaId);
+    final chapter = chapters
+        .where((value) => value.chapter.id == widget.request.chapterId)
+        .firstOrNull;
+    final current = widget.request.binding;
+    final alternate = chapter?.openableBindings
+        .where(
+          (value) =>
+              current == null ||
+              value.providerId != current.providerId ||
+              value.externalId != current.externalId,
+        )
+        .firstOrNull;
+    if (alternate == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No alternate source is available.')),
+        );
+      }
+      return;
+    }
+    await _open(
+      ReaderSessionRequest(
+        mediaId: widget.request.mediaId,
+        chapterId: widget.request.chapterId,
+        binding: alternate,
+      ),
+    );
+  }
 }
 
 class _ReaderPageView extends StatefulWidget {
@@ -555,9 +592,14 @@ class _ReaderPageViewState extends State<_ReaderPageView> {
 }
 
 class _ReaderError extends StatelessWidget {
-  const _ReaderError({required this.error, required this.retry});
+  const _ReaderError({
+    required this.error,
+    required this.retry,
+    required this.alternate,
+  });
   final Object error;
   final VoidCallback retry;
+  final VoidCallback alternate;
   @override
   Widget build(BuildContext context) => Center(
     child: Padding(
@@ -572,9 +614,7 @@ class _ReaderError extends StatelessWidget {
           ),
           const SizedBox(height: ZankaSpace.md),
           Text(
-            error is ReaderException
-                ? (error as ReaderException).message
-                : 'The reader could not open this chapter. Check the local file or choose another source.',
+            _readerErrorMessage(error),
             textAlign: TextAlign.center,
             style: const TextStyle(color: Colors.white),
           ),
@@ -584,11 +624,29 @@ class _ReaderError extends StatelessWidget {
             icon: const Icon(Icons.refresh),
             label: const Text('Retry reader'),
           ),
+          TextButton.icon(
+            onPressed: alternate,
+            icon: const Icon(Icons.swap_horiz),
+            label: const Text('Try another source'),
+          ),
         ],
       ),
     ),
   );
 }
+
+String _readerErrorMessage(Object error) => switch (error) {
+  ReaderException(kind: ReaderErrorKind.sourceUnavailable) =>
+    'This source is temporarily unreachable. Retry, or choose another source.',
+  ReaderException(kind: ReaderErrorKind.manifestInvalid) =>
+    'This chapter page has changed and cannot be read right now. Retry later or choose another source.',
+  ReaderException(kind: ReaderErrorKind.unsupportedFormat) =>
+    'This chapter uses a format Zanka cannot read on this device.',
+  ReaderException(kind: ReaderErrorKind.localFileMissing) =>
+    'The local chapter file is missing. Repair it from Media Details.',
+  _ =>
+    'The reader could not open this chapter. Retry or choose another source.',
+};
 
 String _sourceName(ProviderId id) => id.value
     .split('-')

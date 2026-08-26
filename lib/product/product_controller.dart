@@ -240,6 +240,12 @@ class ProductController extends ChangeNotifier {
   Future<ProductMediaDetails?> details(CanonicalMediaId id) =>
       repository.details(id);
 
+  Future<ProductMediaDetails> refreshDetails(CanonicalMediaId id) async {
+    final value = await repository.refreshDetails(id);
+    await refreshLocal();
+    return value;
+  }
+
   Future<ProductMediaDetails> updateLibrary(
     ProductMediaDetails details, {
     bool? saved,

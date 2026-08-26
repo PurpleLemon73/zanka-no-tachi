@@ -8,6 +8,15 @@ abstract interface class PlaybackSourceResolver {
   Future<PlaybackManifest> resolve(PlaybackSessionRequest request);
 }
 
+/// Opt-in for remote sources whose ephemeral playback locator may safely be
+/// resolved once more after a temporary session-open failure.
+abstract interface class FreshPlaybackManifestRetry {}
+
+abstract interface class FreshPlaybackRetryObserver {
+  void recordMediaInitializationFailure(EpisodeSourceBinding binding);
+  void recordMediaInitializationRecovery(EpisodeSourceBinding binding);
+}
+
 class PlaybackSourceRegistry {
   PlaybackSourceRegistry(Iterable<PlaybackSourceResolver> resolvers)
     : _resolvers = {for (final item in resolvers) item.providerId: item};

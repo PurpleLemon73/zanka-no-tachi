@@ -206,6 +206,38 @@ void main() {
     },
   );
 
+  test('fresh live retry is bounded and preserves exact resume', () async {
+    final original = await repository.open(
+      const ReaderSessionRequest(
+        mediaId: sampleMangaId,
+        chapterId: sampleChapterOneId,
+      ),
+    );
+    await repository.savePosition(original, 2);
+    final resolver = _FlakyReaderResolver();
+    final retrying = ReaderRepository(
+      database: database,
+      sources: ReaderSourceRegistry([resolver]),
+      preferencesStore: ReaderPreferencesStore(
+        file: File('${temp.path}/retry-preferences.json'),
+      ),
+    );
+    final reopened = await retrying.open(
+      const ReaderSessionRequest(
+        mediaId: sampleMangaId,
+        chapterId: sampleChapterOneId,
+        binding: ChapterSourceBinding(
+          canonicalId: sampleChapterOneId,
+          providerId: localFolderProviderId,
+          externalId: 'sample-folder-chapter-1',
+        ),
+      ),
+    );
+    expect(resolver.calls, 2);
+    expect(reopened.startPage, 2);
+    expect((await database.mangaProgress(sampleMangaId))?.pageIndex, 2);
+  });
+
   test(
     'preferred reader source is selected only when chapter-capable',
     () async {
@@ -364,6 +396,41 @@ void main() {
       );
     },
   );
+}
+
+class _FlakyReaderResolver
+    implements ReaderSourceResolver, FreshReaderManifestRetry {
+  int calls = 0;
+  @override
+  ProviderId get providerId => localFolderProviderId;
+
+  @override
+  ReaderSourceCapability capability(ChapterSourceBinding binding) =>
+      ReaderSourceCapability.readerCapable;
+
+  @override
+  Future<ReaderManifest> resolve(ReaderSessionRequest request) async {
+    calls++;
+    if (calls == 1) {
+      throw const ReaderException(
+        ReaderErrorKind.sourceUnavailable,
+        'temporary',
+      );
+    }
+    return ReaderManifest(
+      sourceName: 'Recovered',
+      binding: request.binding!,
+      pages: [
+        for (var index = 0; index < 4; index++)
+          ReaderPage(
+            id: 'page-$index',
+            index: index,
+            displayLocator: 'Page ${index + 1}',
+            loadBytes: () async => Uint8List.fromList([index]),
+          ),
+      ],
+    );
+  }
 }
 
 ReaderRepository _repository(CanonicalDatabase database, Directory temp) =>

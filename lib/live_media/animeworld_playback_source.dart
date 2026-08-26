@@ -12,7 +12,11 @@ import 'live_media_diagnostics.dart';
 
 const animeWorldProviderId = ProviderId('animeworld');
 
-class AnimeWorldPlaybackSource implements PlaybackSourceResolver {
+class AnimeWorldPlaybackSource
+    implements
+        PlaybackSourceResolver,
+        FreshPlaybackManifestRetry,
+        FreshPlaybackRetryObserver {
   AnimeWorldPlaybackSource({
     required ProviderConfig config,
     required this.transport,
@@ -28,15 +32,25 @@ class AnimeWorldPlaybackSource implements PlaybackSourceResolver {
   ProviderId get providerId => animeWorldProviderId;
 
   @override
-  PlaybackSourceCapability capability(EpisodeSourceBinding binding) =>
-      config.enabled && binding.relativeLocator != null
-      ? PlaybackSourceCapability.playbackCapable
-      : PlaybackSourceCapability.temporarilyUnavailable;
+  PlaybackSourceCapability capability(EpisodeSourceBinding binding) {
+    if (!config.enabled || binding.relativeLocator == null) {
+      return PlaybackSourceCapability.temporarilyUnavailable;
+    }
+    return switch (LiveMediaDiagnostics.instance
+        .forBinding(providerId, binding.externalId)
+        .state) {
+      LiveManifestState.unsupported => PlaybackSourceCapability.unsupported,
+      LiveManifestState.networkFailure || LiveManifestState.parserMismatch =>
+        PlaybackSourceCapability.temporarilyUnavailable,
+      _ => PlaybackSourceCapability.playbackCapable,
+    };
+  }
 
   @override
   Future<PlaybackManifest> resolve(PlaybackSessionRequest request) async {
     final binding = request.binding;
-    if (binding == null ||
+    if (!config.enabled ||
+        binding == null ||
         binding.providerId != providerId ||
         binding.relativeLocator == null) {
       throw const PlaybackException(
@@ -95,6 +109,8 @@ class AnimeWorldPlaybackSource implements PlaybackSourceResolver {
         providerId,
         LiveManifestState.available,
         'Public ${media.contentType} media resolved',
+        externalId: binding.externalId,
+        mediaType: media.contentType,
       );
       return PlaybackManifest(
         sourceName: 'AnimeWorld',
@@ -112,9 +128,16 @@ class AnimeWorldPlaybackSource implements PlaybackSourceResolver {
             ? LiveManifestState.unsupported
             : LiveManifestState.parserMismatch,
         'Playback delivery ${error.kind.name}',
+        externalId: binding.externalId,
       );
       rethrow;
     } on FormatException catch (error) {
+      LiveMediaDiagnostics.instance.record(
+        providerId,
+        LiveManifestState.parserMismatch,
+        'Playback manifest JSON changed',
+        externalId: binding.externalId,
+      );
       throw PlaybackException(
         PlaybackErrorKind.manifestInvalid,
         'AnimeWorld returned malformed player data.',
@@ -125,6 +148,7 @@ class AnimeWorldPlaybackSource implements PlaybackSourceResolver {
         providerId,
         LiveManifestState.networkFailure,
         'Playback resolution could not reach its next stage',
+        externalId: binding.externalId,
       );
       throw PlaybackException(
         PlaybackErrorKind.sourceUnavailable,
@@ -132,6 +156,29 @@ class AnimeWorldPlaybackSource implements PlaybackSourceResolver {
         error,
       );
     }
+  }
+
+  @override
+  void recordMediaInitializationFailure(EpisodeSourceBinding binding) {
+    LiveMediaDiagnostics.instance.record(
+      providerId,
+      LiveManifestState.networkFailure,
+      'Resolved media could not initialize',
+      externalId: binding.externalId,
+      mediaType: 'video/mp4',
+    );
+  }
+
+  @override
+  void recordMediaInitializationRecovery(EpisodeSourceBinding binding) {
+    LiveMediaDiagnostics.instance.record(
+      providerId,
+      LiveManifestState.available,
+      'Fresh playback manifest recovered initialization',
+      externalId: binding.externalId,
+      mediaType: 'video/mp4',
+      freshRetryRecovered: true,
+    );
   }
 
   void _requireSuccess(LiveMediaResponse response, String stage) {
@@ -152,10 +199,22 @@ class AnimeWorldMediaReference {
 
 AnimeWorldMediaReference parseAnimeWorldMedia(String html, Uri playerUri) {
   final document = html_parser.parse(html);
-  final source = document.querySelector('video source[src]');
+  final sources = document.querySelectorAll('video source[src]');
+  final source = sources
+      .where(
+        (value) =>
+            (value.attributes['type'] ?? '').toLowerCase() == 'video/mp4',
+      )
+      .firstOrNull;
   final raw = source?.attributes['src'];
   final type = source?.attributes['type']?.toLowerCase() ?? '';
   if (raw == null || raw.isEmpty) {
+    if (sources.isNotEmpty || document.querySelector('iframe[src]') != null) {
+      throw const PlaybackException(
+        PlaybackErrorKind.unsupportedFormat,
+        'AnimeWorld returned a public media format not verified by this player.',
+      );
+    }
     throw const PlaybackException(
       PlaybackErrorKind.manifestInvalid,
       'AnimeWorld player media markers changed.',
@@ -168,12 +227,7 @@ AnimeWorldMediaReference parseAnimeWorldMedia(String html, Uri playerUri) {
       'AnimeWorld returned an unsupported media locator.',
     );
   }
-  final supported =
-      type == 'video/mp4' ||
-      type == 'application/x-mpegurl' ||
-      type == 'application/vnd.apple.mpegurl' ||
-      type == 'application/dash+xml';
-  if (!supported) {
+  if (type != 'video/mp4') {
     throw const PlaybackException(
       PlaybackErrorKind.unsupportedFormat,
       'AnimeWorld returned an unsupported public media format.',

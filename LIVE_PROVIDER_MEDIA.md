@@ -1,5 +1,21 @@
 # M11 Live Provider Media Model
 
+## M12 reliability extension
+
+M12 adds transient exact-binding observations on top of descriptor capability,
+one opt-in fresh resolver retry, one MangaWorld same-page manifest refresh, and
+one remote player-initialization refresh. The canonical/source-binding/session
+boundaries are unchanged. Details and media screens consume generic ready versus
+retryable availability and actionable typed errors; no provider branch entered
+normal widgets.
+
+MangaWorld parsing now handles common lazy attributes, absolute/relative JSON
+page refs, deduplication, malformed refs and redirect-final referrers. AnimeWorld
+selects verified MP4 across multiple source elements and rejects unevidenced
+delivery formats. Adapter Diagnostics exposes only aggregate sanitized timing,
+failure class, media type and retry outcome. `LIVE_RELIABILITY.md` is the M12
+policy authority and `LIVE_COMPATIBILITY_MATRIX.md` records the evidence.
+
 ## Dependency and state boundary
 
 ```text

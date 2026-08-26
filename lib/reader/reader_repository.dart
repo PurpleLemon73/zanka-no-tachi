@@ -24,6 +24,17 @@ class ReaderChapterAvailability {
             ReaderSourceCapability.readerCapable,
       )
       .toList();
+  List<ChapterSourceBinding> get retryableBindings => bindings
+      .where(
+        (binding) =>
+            capabilities[binding.providerId] ==
+            ReaderSourceCapability.temporarilyUnavailable,
+      )
+      .toList();
+  List<ChapterSourceBinding> get openableBindings => [
+    ...readableBindings,
+    ...retryableBindings,
+  ];
 }
 
 class ReaderRepository {
@@ -91,7 +102,10 @@ class ReaderRepository {
     }
     binding ??= await _preferredReadable(mediaId, bindings);
     if (binding == null ||
-        sources.capability(binding) != ReaderSourceCapability.readerCapable) {
+        !{
+          ReaderSourceCapability.readerCapable,
+          ReaderSourceCapability.temporarilyUnavailable,
+        }.contains(sources.capability(binding))) {
       throw const ReaderException(
         ReaderErrorKind.sourceUnavailable,
         'No readable source is configured for this chapter.',
@@ -107,13 +121,21 @@ class ReaderRepository {
         'The reader adapter for this source is unavailable.',
       );
     }
-    final manifest = await resolver.resolve(
-      ReaderSessionRequest(
-        mediaId: mediaId,
-        chapterId: chapter.id,
-        binding: binding,
-      ),
+    final resolvedRequest = ReaderSessionRequest(
+      mediaId: mediaId,
+      chapterId: chapter.id,
+      binding: binding,
     );
+    ReaderManifest manifest;
+    try {
+      manifest = await resolver.resolve(resolvedRequest);
+    } on ReaderException catch (error) {
+      if (error.kind != ReaderErrorKind.sourceUnavailable ||
+          resolver is! FreshReaderManifestRetry) {
+        rethrow;
+      }
+      manifest = await resolver.resolve(resolvedRequest);
+    }
     if (manifest.pages.isEmpty ||
         manifest.pages.indexed.any((entry) => entry.$1 != entry.$2.index)) {
       throw const ReaderException(
@@ -149,12 +171,20 @@ class ReaderRepository {
               ReaderSourceCapability.readerCapable,
         )
         .toList();
+    final retryable = bindings
+        .where(
+          (binding) =>
+              sources.capability(binding) ==
+              ReaderSourceCapability.temporarilyUnavailable,
+        )
+        .toList();
     final preferred = await database.preferredProvider(mediaId);
     for (final binding in readable) {
       if (binding.providerId == preferred) return binding;
     }
     readable.sort((a, b) => a.providerId.value.compareTo(b.providerId.value));
-    return readable.firstOrNull;
+    retryable.sort((a, b) => a.providerId.value.compareTo(b.providerId.value));
+    return readable.firstOrNull ?? retryable.firstOrNull;
   }
 
   Future<void> savePosition(ReaderSession session, int pageIndex) async {

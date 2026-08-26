@@ -220,6 +220,37 @@ class ProductRepository {
     return (await details(ingested.media.id))!;
   }
 
+  Future<ProductMediaDetails> refreshDetails(
+    CanonicalMediaId requestedId,
+  ) async {
+    final mediaId = await live.database.resolveCanonicalId(requestedId);
+    final media = await live.database.media(mediaId);
+    if (media == null) throw StateError('Media is no longer available');
+    final bindings = await live.database.mediaBindingsFor(mediaId);
+    var refreshed = false;
+    Object? lastError;
+    for (final binding in bindings) {
+      final locator = binding.relativeLocator;
+      if (locator == null || !_enabled(binding.providerId)) continue;
+      try {
+        await live.ingestDetail(
+          ProviderListingItem(
+            providerId: binding.providerId,
+            externalId: binding.externalId,
+            title: media.title.value,
+            relativeLocator: locator,
+            mediaKind: media.kind,
+          ),
+        );
+        refreshed = true;
+      } on Object catch (error) {
+        lastError = error;
+      }
+    }
+    if (!refreshed && lastError != null) throw lastError;
+    return (await details(mediaId))!;
+  }
+
   Future<void> setLibrary({
     required CanonicalMediaId mediaId,
     required bool saved,

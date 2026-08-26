@@ -442,7 +442,7 @@ class AdapterDiagnosticsScreen extends StatelessWidget {
                     alignment: Alignment.centerLeft,
                     child: Text(
                       'Enabled: ${entry.configuration?.enabled ?? 'runtime default'} · '
-                      'Base URL: ${entry.configuration?.baseUrl ?? 'local / not applicable'}',
+                      'Authority: ${_sanitizedAuthority(entry.configuration?.baseUrl)}',
                     ),
                   ),
                   Align(
@@ -457,9 +457,16 @@ class AdapterDiagnosticsScreen extends StatelessWidget {
                     Text('Last parser mismatch: $at'),
                   if (entry.liveManifest case final manifest?)
                     Text(
-                      'Media manifest: ${manifest.state.name} · '
-                      '${manifest.summary ?? 'Open an installment to validate'} · '
-                      '${manifest.checkedAt ?? 'never'}',
+                      [
+                        'Media manifest: ${manifest.state.name}',
+                        'type: ${manifest.mediaType ?? 'not observed'}',
+                        'last success: ${manifest.lastSuccessAt ?? 'never'}',
+                        'last failure: ${manifest.lastFailureAt ?? 'never'}',
+                        'failure class: ${manifest.failureClass ?? 'none'}',
+                        'parser drift: ${manifest.lastParserMismatchAt ?? 'never'}',
+                        'fresh retry recovered: ${manifest.freshRetryRecovered ? 'yes' : 'no'}',
+                        manifest.summary ?? 'Open an installment to validate',
+                      ].join(' · '),
                     ),
                   if (entry.reliability?.lastError case final error?)
                     SelectableText('Last error: $error'),
@@ -470,6 +477,11 @@ class AdapterDiagnosticsScreen extends StatelessWidget {
       },
     ),
   );
+}
+
+String _sanitizedAuthority(Uri? uri) {
+  if (uri == null) return 'local / runtime default';
+  return '${uri.scheme}://${uri.host}${uri.hasPort ? ':${uri.port}' : ''}';
 }
 
 class ReconciliationPanel extends StatelessWidget {

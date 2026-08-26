@@ -153,6 +153,42 @@ void main() {
     },
   );
 
+  test('fresh live retry is bounded and preserves exact timestamp', () async {
+    final original = await repository.open(
+      const PlaybackSessionRequest(mediaId: mediaId, episodeId: episodeId),
+    );
+    await repository.savePosition(
+      original,
+      const Duration(seconds: 37),
+      const Duration(minutes: 2),
+    );
+    final resolver = _FlakyPlaybackResolver();
+    final retrying = PlaybackRepository(
+      database: database,
+      sources: PlaybackSourceRegistry([resolver]),
+      preferencesStore: PlaybackPreferencesStore(
+        file: File('${temp.path}/retry-preferences.json'),
+      ),
+    );
+    final reopened = await retrying.open(
+      const PlaybackSessionRequest(
+        mediaId: mediaId,
+        episodeId: episodeId,
+        binding: EpisodeSourceBinding(
+          canonicalId: episodeId,
+          providerId: sourceA,
+          externalId: 'a-1',
+        ),
+      ),
+    );
+    expect(resolver.calls, 2);
+    expect(reopened.startPosition, const Duration(seconds: 37));
+    expect(
+      (await database.animeProgress(mediaId))?.position,
+      const Duration(seconds: 37),
+    );
+  });
+
   test('metadata-only bindings are not playback capable', () async {
     const metadata = EpisodeSourceBinding(
       canonicalId: episodeId,
@@ -280,4 +316,29 @@ class _FakeResolver implements PlaybackSourceResolver {
         binding: request.binding!,
         uri: Uri.file(request.binding!.relativeLocator ?? '/fake.mp4'),
       );
+}
+
+class _FlakyPlaybackResolver
+    implements PlaybackSourceResolver, FreshPlaybackManifestRetry {
+  int calls = 0;
+  @override
+  ProviderId get providerId => sourceA;
+  @override
+  PlaybackSourceCapability capability(EpisodeSourceBinding binding) =>
+      PlaybackSourceCapability.playbackCapable;
+  @override
+  Future<PlaybackManifest> resolve(PlaybackSessionRequest request) async {
+    calls++;
+    if (calls == 1) {
+      throw const PlaybackException(
+        PlaybackErrorKind.sourceUnavailable,
+        'temporary',
+      );
+    }
+    return PlaybackManifest(
+      sourceName: 'Recovered',
+      binding: request.binding!,
+      uri: Uri.file('/recovered.mp4'),
+    );
+  }
 }

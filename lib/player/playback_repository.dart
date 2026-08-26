@@ -24,6 +24,17 @@ class PlaybackEpisodeAvailability {
             PlaybackSourceCapability.playbackCapable,
       )
       .toList();
+  List<EpisodeSourceBinding> get retryableBindings => bindings
+      .where(
+        (binding) =>
+            capabilities[binding.providerId] ==
+            PlaybackSourceCapability.temporarilyUnavailable,
+      )
+      .toList();
+  List<EpisodeSourceBinding> get openableBindings => [
+    ...playableBindings,
+    ...retryableBindings,
+  ];
 }
 
 class PlaybackRepository {
@@ -90,8 +101,10 @@ class PlaybackRepository {
     }
     binding ??= await _preferredPlayable(mediaId, bindings);
     if (binding == null ||
-        sources.capability(binding) !=
-            PlaybackSourceCapability.playbackCapable) {
+        !{
+          PlaybackSourceCapability.playbackCapable,
+          PlaybackSourceCapability.temporarilyUnavailable,
+        }.contains(sources.capability(binding))) {
       throw const PlaybackException(
         PlaybackErrorKind.sourceUnavailable,
         'No playback-capable source is configured for this episode.',
@@ -107,13 +120,21 @@ class PlaybackRepository {
         'The playback adapter for this source is unavailable.',
       );
     }
-    final manifest = await resolver.resolve(
-      PlaybackSessionRequest(
-        mediaId: mediaId,
-        episodeId: episode.id,
-        binding: binding,
-      ),
+    final resolvedRequest = PlaybackSessionRequest(
+      mediaId: mediaId,
+      episodeId: episode.id,
+      binding: binding,
     );
+    PlaybackManifest manifest;
+    try {
+      manifest = await resolver.resolve(resolvedRequest);
+    } on PlaybackException catch (error) {
+      if (error.kind != PlaybackErrorKind.sourceUnavailable ||
+          resolver is! FreshPlaybackManifestRetry) {
+        rethrow;
+      }
+      manifest = await resolver.resolve(resolvedRequest);
+    }
     if (manifest.uri.scheme.isEmpty ||
         manifest.binding.externalId != binding.externalId) {
       throw const PlaybackException(
@@ -146,12 +167,20 @@ class PlaybackRepository {
               PlaybackSourceCapability.playbackCapable,
         )
         .toList();
+    final retryable = bindings
+        .where(
+          (binding) =>
+              sources.capability(binding) ==
+              PlaybackSourceCapability.temporarilyUnavailable,
+        )
+        .toList();
     final preferred = await database.preferredProvider(mediaId);
     for (final binding in playable) {
       if (binding.providerId == preferred) return binding;
     }
     playable.sort((a, b) => a.providerId.value.compareTo(b.providerId.value));
-    return playable.firstOrNull;
+    retryable.sort((a, b) => a.providerId.value.compareTo(b.providerId.value));
+    return playable.firstOrNull ?? retryable.firstOrNull;
   }
 
   Future<void> savePosition(
@@ -207,7 +236,7 @@ class PlaybackRepository {
   ) async {
     if (!session.preferences.autoplayNext) return null;
     final next = await adjacent(session, 1);
-    return next != null && next.playableBindings.isNotEmpty ? next : null;
+    return next != null && next.openableBindings.isNotEmpty ? next : null;
   }
 
   Future<void> savePreferences(PlaybackPreferences value) =>

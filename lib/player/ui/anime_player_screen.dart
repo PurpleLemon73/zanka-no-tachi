@@ -8,6 +8,7 @@ import 'package:video_player/video_player.dart';
 import '../../canonical/domain/bindings.dart';
 import '../playback_domain.dart';
 import '../playback_repository.dart';
+import '../playback_source.dart';
 
 class AnimePlayerScreen extends StatefulWidget {
   const AnimePlayerScreen({
@@ -40,7 +41,10 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
     unawaited(_open());
   }
 
-  Future<void> _open() async {
+  Future<void> _open({
+    bool allowMediaRetry = true,
+    bool showRecovered = false,
+  }) async {
     final previous = controller;
     controller = null;
     if (previous != null) {
@@ -51,9 +55,11 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
       error = null;
       session = null;
     });
+    PlaybackSession? opened;
+    VideoPlayerController? video;
     try {
-      final opened = await widget.repository.open(widget.request);
-      final video = opened.manifest.isLocalFile
+      opened = await widget.repository.open(widget.request);
+      video = opened.manifest.isLocalFile
           ? VideoPlayerController.file(File.fromUri(opened.manifest.uri))
           : VideoPlayerController.networkUrl(
               opened.manifest.uri,
@@ -75,8 +81,32 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
         session = opened;
         controller = video;
       });
+      if (showRecovered) {
+        final observer = widget.repository.sources.resolver(
+          opened.manifest.binding.providerId,
+        );
+        if (observer is FreshPlaybackRetryObserver) {
+          (observer as FreshPlaybackRetryObserver)
+              .recordMediaInitializationRecovery(opened.manifest.binding);
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('The source refreshed successfully.')),
+        );
+      }
       _scheduleHide();
     } on Object catch (value) {
+      await video?.dispose();
+      if (allowMediaRetry && opened != null && !opened.manifest.isLocalFile) {
+        final observer = widget.repository.sources.resolver(
+          opened.manifest.binding.providerId,
+        );
+        if (observer is FreshPlaybackRetryObserver) {
+          (observer as FreshPlaybackRetryObserver)
+              .recordMediaInitializationFailure(opened.manifest.binding);
+        }
+        await _open(allowMediaRetry: false, showRecovered: true);
+        return;
+      }
       if (mounted) setState(() => error = value);
     }
   }
@@ -216,7 +246,11 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
               title: Text(session?.episode.label.rawLabel ?? 'Player'),
             ),
       body: error != null
-          ? _ErrorState(error: error!, retry: _open)
+          ? _ErrorState(
+              error: error!,
+              retry: () => _open(),
+              alternate: _openAlternate,
+            )
           : controller == null || session == null
           ? const Center(child: CircularProgressIndicator())
           : GestureDetector(
@@ -314,7 +348,7 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
             ),
             for (final binding in values.bindings)
               ListTile(
-                enabled: values.playableBindings.contains(binding),
+                enabled: values.openableBindings.contains(binding),
                 leading: Icon(
                   binding.providerId == session!.manifest.binding.providerId
                       ? Icons.radio_button_checked
@@ -323,10 +357,12 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
                 title: Text(binding.providerId.value),
                 subtitle: Text(
                   values.playableBindings.contains(binding)
-                      ? 'Playback capable'
+                      ? 'Ready to play'
+                      : values.retryableBindings.contains(binding)
+                      ? 'Available to retry'
                       : 'Metadata only',
                 ),
-                onTap: values.playableBindings.contains(binding)
+                onTap: values.openableBindings.contains(binding)
                     ? () => Navigator.pop(context, binding)
                     : null,
               ),
@@ -352,14 +388,14 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
           for (final value in episodes)
             ListTile(
               selected: value.episode.id == session!.episode.id,
-              enabled: value.playableBindings.isNotEmpty,
+              enabled: value.openableBindings.isNotEmpty,
               title: Text(value.episode.label.rawLabel),
               subtitle: Text(
-                value.playableBindings.isEmpty
+                value.openableBindings.isEmpty
                     ? 'No playable source'
                     : '${value.playableBindings.length} source(s)',
               ),
-              onTap: value.playableBindings.isEmpty
+              onTap: value.openableBindings.isEmpty
                   ? null
                   : () => Navigator.pop(context, value),
             ),
@@ -385,7 +421,7 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
 
   Future<void> _openAdjacent(int direction) async {
     final value = await widget.repository.adjacent(session!, direction);
-    if (value == null || value.playableBindings.isEmpty || !mounted) return;
+    if (value == null || value.openableBindings.isEmpty || !mounted) return;
     await _flush();
     if (!mounted) return;
     await Navigator.of(context).pushReplacement(
@@ -399,6 +435,30 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
         ),
       ),
     );
+  }
+
+  Future<void> _openAlternate() async {
+    final values = (await widget.repository.episodes(
+      widget.request.mediaId,
+    )).where((item) => item.episode.id == widget.request.episodeId).firstOrNull;
+    final current = widget.request.binding;
+    final alternate = values?.openableBindings
+        .where(
+          (value) =>
+              current == null ||
+              value.providerId != current.providerId ||
+              value.externalId != current.externalId,
+        )
+        .firstOrNull;
+    if (alternate == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No alternate source is available.')),
+        );
+      }
+      return;
+    }
+    await _replace(alternate);
   }
 
   Future<void> _showPreferences() async {
@@ -578,9 +638,14 @@ class _Controls extends StatelessWidget {
 }
 
 class _ErrorState extends StatelessWidget {
-  const _ErrorState({required this.error, required this.retry});
+  const _ErrorState({
+    required this.error,
+    required this.retry,
+    required this.alternate,
+  });
   final Object error;
   final Future<void> Function() retry;
+  final Future<void> Function() alternate;
   @override
   Widget build(BuildContext context) => Center(
     child: Padding(
@@ -591,19 +656,37 @@ class _ErrorState extends StatelessWidget {
           const Icon(Icons.error_outline, color: Colors.white, size: 48),
           const SizedBox(height: 12),
           Text(
-            error is PlaybackException
-                ? (error as PlaybackException).message
-                : 'The player could not open this episode. Check the local file or choose another source.',
+            _playbackErrorMessage(error),
             textAlign: TextAlign.center,
             style: const TextStyle(color: Colors.white),
           ),
           const SizedBox(height: 12),
           FilledButton(onPressed: retry, child: const Text('Retry')),
+          TextButton.icon(
+            onPressed: alternate,
+            icon: const Icon(Icons.swap_horiz),
+            label: const Text('Try another source'),
+          ),
         ],
       ),
     ),
   );
 }
+
+String _playbackErrorMessage(Object error) => switch (error) {
+  PlaybackException(kind: PlaybackErrorKind.sourceUnavailable) =>
+    'This source is temporarily unreachable. Retry, or choose another source.',
+  PlaybackException(kind: PlaybackErrorKind.manifestInvalid) =>
+    'This episode page has changed and cannot be played right now. Retry later or choose another source.',
+  PlaybackException(kind: PlaybackErrorKind.unsupportedFormat) =>
+    'This episode uses a media format Zanka cannot play on this device.',
+  PlaybackException(kind: PlaybackErrorKind.localFileMissing) =>
+    'The local video is missing. Repair it from Media Details.',
+  PlaybackException(kind: PlaybackErrorKind.decoderFailure) =>
+    'This video could not start on this device. Retry for a fresh source or choose another source.',
+  _ =>
+    'The player could not open this episode. Retry or choose another source.',
+};
 
 String _clock(Duration value) {
   final hours = value.inHours;
