@@ -67,11 +67,13 @@ class ZankaApp extends StatefulWidget {
     this.preferences,
     this.diagnostics,
     this.enableOnboarding,
+    this.liveMediaTransport,
   });
   final LiveProviderRepository? repository;
   final AppPreferencesStore? preferences;
   final LocalDiagnostics? diagnostics;
   final bool? enableOnboarding;
+  final LiveMediaTransport? liveMediaTransport;
   @override
   State<ZankaApp> createState() => _ZankaAppState();
 }
@@ -95,7 +97,11 @@ class _ZankaAppState extends State<ZankaApp> {
     ownsRepository = widget.repository == null;
     preferences = widget.preferences ?? AppPreferencesStore();
     diagnostics = widget.diagnostics ?? LocalDiagnostics();
-    liveMediaTransport = HttpLiveMediaTransport();
+    liveMediaTransport =
+        widget.liveMediaTransport ??
+        (ownsRepository
+            ? HttpLiveMediaTransport()
+            : _UnavailableLiveMediaTransport());
     repository =
         widget.repository ??
         LiveProviderRepository(
@@ -215,6 +221,19 @@ class _ZankaAppState extends State<ZankaApp> {
             aboutBuilder: (_) => AboutZankaScreen(diagnostics: diagnostics),
           ),
   );
+}
+
+class _UnavailableLiveMediaTransport implements LiveMediaTransport {
+  @override
+  Future<LiveMediaResponse> get(
+    Uri uri, {
+    Map<String, String> headers = const {},
+  }) => Future.error(
+    StateError('Live media transport is disabled in this composition.'),
+  );
+
+  @override
+  void close() {}
 }
 
 class DeveloperSourcesScreen extends StatefulWidget {

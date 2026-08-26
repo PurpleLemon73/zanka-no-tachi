@@ -83,6 +83,14 @@ class MangaWorldParser
         );
       }
     }
+    if (chapters.isEmpty) {
+      for (final row in document.querySelectorAll(
+        '.chapters-wrapper .chapter, .volume-chapters > .chapter',
+      )) {
+        final chapter = _chapter(row, volumeLabel: null);
+        if (chapter != null) chapters.add(chapter);
+      }
+    }
     return MangaWorldTitleDto(
       sourceId: _mediaId(sourceUrl),
       sourceUrl: sourceUrl,
@@ -115,6 +123,27 @@ class MangaWorldParser
           .where((e) => e.isNotEmpty)
           .toList(),
       chapters: chapters,
+    );
+  }
+
+  MangaWorldChapterDto? _chapter(Element row, {required String? volumeLabel}) {
+    final link = row.querySelector('a.chap, a.chapter-link, a[href]');
+    if (link == null) return null;
+    final url = _uri(link.attributes['href']);
+    if (url == null) return null;
+    final label = normalizer.text(
+      row.querySelector('.chapter-title, .name, span')?.text ?? link.text,
+    );
+    return MangaWorldChapterDto(
+      sourceId: _lastSegment(url),
+      sourceUrl: url,
+      label: label,
+      number: normalizer.decimal(label),
+      volumeLabel: volumeLabel,
+      displayDate: _nullableText(
+        row.querySelector('.chap-date, .chapter-date, .date')?.text,
+      ),
+      title: _nullableText(row.querySelector('.chapter-subtitle')?.text),
     );
   }
 

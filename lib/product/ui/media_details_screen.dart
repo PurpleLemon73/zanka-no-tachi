@@ -908,7 +908,7 @@ Future<void> _placeholder(
         children: [
           Text(title, style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: ZankaSpace.sm),
-          const Text('Reader/player milestone not implemented yet.'),
+          const Text('This installment can’t be opened right now.'),
           const SizedBox(height: ZankaSpace.sm),
           Text(warning),
           const SizedBox(height: ZankaSpace.md),

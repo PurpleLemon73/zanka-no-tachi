@@ -12,6 +12,7 @@ import 'package:zanka_no_tachi/live_provider/live_provider_repository.dart';
 import 'package:zanka_no_tachi/live_provider/provider_registry.dart';
 import 'package:zanka_no_tachi/live_provider/provider_transport.dart';
 import 'package:zanka_no_tachi/main.dart';
+import 'package:zanka_no_tachi/reader/ui/manga_reader_screen.dart';
 
 void main() {
   testWidgets(
@@ -101,15 +102,9 @@ void main() {
     expect(find.textContaining('Sources:'), findsWidgets);
     await tester.tap(find.text('Capitolo 46.5'));
     await tester.pumpAndSettle();
-    expect(
-      find.textContaining('No readable source is configured'),
-      findsOneWidget,
-    );
-    expect(
-      find.textContaining('Page equivalence is not assumed'),
-      findsOneWidget,
-    );
-    await tester.tap(find.byKey(const Key('close-placeholder')));
+    expect(find.byType(MangaReaderScreen), findsOneWidget);
+    expect(find.text('Retry reader'), findsOneWidget);
+    await tester.pageBack();
     await tester.pumpAndSettle();
 
     await tester.pageBack();
@@ -262,7 +257,7 @@ void main() {
     await tester.tap(find.text('Episode 1'));
     await tester.pumpAndSettle();
     expect(
-      find.text('Reader/player milestone not implemented yet.'),
+      find.text('This installment can’t be opened right now.'),
       findsOneWidget,
     );
     expect(

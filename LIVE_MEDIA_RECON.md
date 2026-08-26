@@ -1,92 +1,89 @@
 # M11 Live Media Reconnaissance
 
-Evidence date: 2026-08-25. Requests were deliberately sparse and limited to
-the two configured provider authorities, public documents referenced by those
-documents, and 2 KiB range checks of the resulting media. No login, CAPTCHA,
-anti-bot challenge, access-control bypass, DRM operation, token forgery,
-privileged endpoint, or alternate-domain discovery was attempted.
+Evidence date: 2026-08-25/26. Requests were sparse and limited to configured
+provider authorities, public documents referenced by them, and 2 KiB range
+checks of resulting media. No login, CAPTCHA, anti-bot challenge, access-control
+bypass, DRM operation, token forgery, privileged endpoint, or alternate-domain
+discovery was attempted.
 
 ## MangaWorld
 
-### Observed browser chain
+### Delivery found
 
-1. A configured public manga detail document returns ordinary HTML and public
-   chapter anchors under its volume/chapter listing.
-2. A selected chapter anchor returns HTTP 200 HTML. The reader document exposes
-   the selected chapter object with an ordered `pages` filename array. It also
-   renders the first image with the complete public CDN directory.
-3. Resolving every filename against that directory produces the page order.
-   The sampled chapter contained 41 mixed JPG/PNG filenames.
-4. A range request for the first image, with the ordinary chapter referrer,
-   returned HTTP 206, `image/jpeg`, and valid JPEG bytes.
+1. Public manga detail HTML exposes ordinary chapter anchors.
+2. A chapter anchor returns HTTP 200 HTML containing the selected chapter's
+   ordered `pages` filename array and a rendered first image whose URL supplies
+   the public CDN directory.
+3. Resolving the filenames against that directory produces page order. The
+   reconnaissance sample contained 41 mixed JPG/PNG filenames.
+4. A 2 KiB first-image range request with the ordinary chapter referrer returned
+   HTTP 206, `image/jpeg`, and valid JPEG bytes.
 
-The delivery mechanism is therefore public chapter HTML plus direct CDN image
-files. No page API, authorization, signed query, cookie-bound image URL, or
-obfuscation was required in the observed sample. The chapter token, directory,
-filename list, CDN authority, and media URLs remain provider-local ephemeral
-facts. Only the existing relative chapter locator is persisted in its source
-binding.
+The mechanism is public chapter HTML plus direct CDN image files. No page API,
+authorization, signed query, cookie-bound image, or obfuscation was required in
+the observed samples. Chapter token, CDN authority, paths and image URLs remain
+provider-local ephemeral facts. Only the pre-existing relative chapter locator
+is persisted in its source binding.
 
-### Parser and header boundaries
+Current detail markup has both explicit `.volume-element` groups and ungrouped
+`.chapters-wrapper .chapter` rows. Physical validation exposed the ungrouped
+variant after the first pass; the metadata parser now supports it while leaving
+`volumeLabel` null rather than inventing a volume.
 
-The manifest parser requires both an ordered public `pages` list and a rendered
-chapter image whose directory anchors those filenames. Missing markers,
-zero pages, or more than 500 pages are parser/manifest failures. Chapter HTTP
-and image HTTP failures are source/page availability failures. Images are lazy;
-opening a manifest does not download them. Page requests send the ordinary
-chapter `Referer`; no credential header is stored.
+### Resolver and failure boundary
 
-Selectors/data paths are fragile because the provider can rename `#reader`,
-the serialized `pages` member, or the CDN directory. Minimized fixtures preserve
-only these facts. Diagnostics report counts and typed state, never URLs.
+The resolver requires an ordered public `pages` list and rendered chapter image
+directory. Zero pages, missing markers, or over 500 pages are manifest/parser
+failures. Chapter HTTP and image HTTP failures are availability/page failures.
+Images are lazy: resolving a session does not download all pages. Image requests
+send the ordinary chapter `Referer`; no credential header is stored.
 
 ## AnimeWorld
 
-### Observed browser chain
+### Delivery found
 
-1. A configured public series URL redirects to its first public episode page.
-   The resulting ordinary HTML contains the episode list, an episode token, a
-   page CSRF value, and a session cookie.
-2. The provider's referenced public player script issues a same-origin GET to
-   `/api/episode/info?id=<episode>&alt=0`, using that normal page session and
-   CSRF header. The JSON response returns a relative same-origin player target.
-3. That target returns a small public iframe document with HTML
-   `<video><source>` metadata.
-4. The observed source was a direct HTTPS MP4. A 2 KiB range request with the
-   ordinary AnimeWorld referrer returned HTTP 206, `video/mp4`, and a valid ISO
-   Base Media prefix.
+1. A public series URL redirects to a public episode page containing episode
+   tokens, a page CSRF value, and an ordinary session cookie.
+2. The provider's public player script calls same-origin
+   `/api/episode/info?id=<episode>&alt=0` with that page session/CSRF header.
+3. JSON returns a relative same-origin player target.
+4. The player document contains HTML `<video><source>`. The observed source was
+   a direct HTTPS MP4. A 2 KiB range request with an ordinary referrer returned
+   HTTP 206, `video/mp4`, and a valid ISO Base Media prefix.
 
-The delivery mechanism is therefore public episode page/session → public
-same-origin JSON → public same-origin iframe → direct MP4. The inspected sample
-did not expose HLS, DASH, DRM, Widevine, authentication, or a protected token
-exchange. The resolver accepts only declared MP4, HLS, or DASH source types, but
-M11 live evidence verifies MP4 only. It does not claim audio or subtitle track
-selection.
+The mechanism is public episode page/session → same-origin JSON → same-origin
+player document → direct MP4. The inspected samples exposed no HLS, DASH, DRM,
+Widevine, login, or protected token exchange. The resolver accepts declared
+MP4/HLS/DASH types, but live M11 evidence verifies MP4 only. It claims no
+selectable audio or subtitle tracks.
 
-The page CSRF value and session cookie are ordinary transient browser state.
-They exist only inside the bounded in-memory transport. The iframe and media
-URLs exist only in the playback manifest. None becomes canonical identity,
-binding identity, progress, diagnostics, backup data, or logs.
+CSRF, cookies, iframe target and media locator are transient in-memory session
+facts. They never become canonical identity, binding identity, progress,
+diagnostics, backup data, or logs. Each playback session resolves fresh.
 
-### Failure taxonomy and uncertainty
+## Fixtures and drift
 
-Episode/player HTTP failures are availability failures. Missing CSRF, malformed
-JSON, absent player target, or absent video source are parser/manifest failures.
-A declared media type outside MP4/HLS/DASH is unsupported. CDN lifetime and
-whether all catalog entries use direct MP4 remain unproven; every playback
-session therefore resolves from the episode page again.
+Fixtures use synthetic hosts/tokens and preserve only success/drift markers.
+No live cookie, CSRF value, provider locator, image, video byte, full provider
+HTML, or personal path is stored. Network/unavailable, parser mismatch and
+unsupported media are separate typed outcomes. CDN policy, locator lifetime and
+whether every episode uses direct MP4 remain open uncertainties.
 
-## Evidence minimization
+## Physical Android evidence
 
-Repository fixtures contain synthetic hosts/tokens and only the structural
-markers required by tests. No live CSRF value, cookie, provider media URL,
-chapter image, video byte, complete provider HTML, or personal path is stored.
+On a Samsung SM-S948B running Android 16, a fresh debug build completed live
+Search/Details. AnimeWorld `Full Metal Panic! (ITA)` showed 24 episodes with one
+playable source; episode 1 resolved and rendered video. MangaWorld
+`One Piece - Digital Colored Comics` ingested 1,076 chapters with one readable
+source; chapter 1040 opened as `1 / 12 · MangaWorld`. Validation stopped after
+initialization. No reader screenshot was retained because that would copy
+chapter artwork into a local artifact.
 
-## Capability conclusion
+## Conclusion
 
-- MangaWorld: `readerCapable` ✅ — public chapter HTML plus direct CDN images.
-- AnimeWorld: `playbackCapable` ✅ — public session/JSON/iframe chain resolving
-  to a direct MP4 in the verified sample.
+- MangaWorld: `readerCapable` ✅ — public chapter HTML + direct CDN images.
+- AnimeWorld: `playbackCapable` ✅ — public session/JSON/player chain + direct
+  MP4 in the verified samples.
 
-These are current compatibility findings, not guarantees that every title or a
+These are current compatibility findings, not promises that every title or a
 future provider revision remains consumable.

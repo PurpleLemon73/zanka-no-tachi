@@ -31,6 +31,20 @@ void main() {
     expect(page.items.single.title, 'MAD');
   });
 
+  test(
+    'parses current ungrouped chapter wrappers without inventing a volume',
+    () {
+      final title = parser.parseTitle(
+        _fixture('manga_detail_ungrouped_chapters.html'),
+        sourceUrl: config.resolve('/manga/2906/wooden-test'),
+      );
+      expect(title.chapters, hasLength(1));
+      expect(title.chapters.single.sourceId, 'chapter-token');
+      expect(title.chapters.single.label, 'Capitolo 15');
+      expect(title.chapters.single.volumeLabel, isNull);
+    },
+  );
+
   test('parses ongoing title metadata and chapter dates', () {
     final title = parser.parseTitle(
       _fixture('manga_detail_ongoing.html'),
