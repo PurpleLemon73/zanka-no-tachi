@@ -10,6 +10,8 @@ import 'media_details_screen.dart';
 import 'local_media_screen.dart';
 import '../../app/app_preferences.dart';
 import '../smart_resume.dart';
+import '../../app/presentation_mode.dart';
+import '../../tv/tv_product_shell.dart';
 
 class ProductShell extends StatelessWidget {
   const ProductShell({
@@ -19,102 +21,118 @@ class ProductShell extends StatelessWidget {
     required this.aboutBuilder,
     required this.appearance,
     required this.onAppearanceChanged,
+    this.presentationMode = PresentationMode.mobile,
   });
   final ProductController controller;
   final WidgetBuilder developerBuilder;
   final WidgetBuilder aboutBuilder;
   final AppPreferences appearance;
   final Future<void> Function(ZankaThemeMode, ZankaAccent) onAppearanceChanged;
+  final PresentationMode presentationMode;
 
   @override
-  Widget build(BuildContext context) => AnimatedBuilder(
-    animation: controller,
-    builder: (context, _) {
-      final pages = <Widget>[
-        HomeScreen(controller: controller),
-        SearchScreen(controller: controller),
-        LibraryScreen(controller: controller),
-        SettingsScreen(
+  Widget build(BuildContext context) {
+    if (presentationMode == PresentationMode.tv) {
+      return AnimatedBuilder(
+        animation: controller,
+        builder: (context, _) => TvProductShell(
           controller: controller,
           developerBuilder: developerBuilder,
           aboutBuilder: aboutBuilder,
           appearance: appearance,
           onAppearanceChanged: onAppearanceChanged,
         ),
-      ];
-      const destinations = [
-        NavigationDestination(
-          icon: Icon(Icons.home_outlined),
-          selectedIcon: Icon(Icons.home),
-          label: 'Home',
-        ),
-        NavigationDestination(icon: Icon(Icons.search), label: 'Search'),
-        NavigationDestination(
-          icon: Icon(Icons.bookmarks_outlined),
-          selectedIcon: Icon(Icons.bookmarks),
-          label: 'Library',
-        ),
-        NavigationDestination(
-          icon: Icon(Icons.settings_outlined),
-          selectedIcon: Icon(Icons.settings),
-          label: 'Settings',
-        ),
-      ];
-      final content = SafeArea(
-        child: IndexedStack(index: controller.selectedTab, children: pages),
       );
-      return LayoutBuilder(
-        builder: (context, constraints) {
-          if (constraints.maxWidth >= 840) {
-            return Scaffold(
-              body: Row(
-                children: [
-                  SafeArea(
-                    child: NavigationRail(
-                      labelType: NavigationRailLabelType.all,
-                      selectedIndex: controller.selectedTab,
-                      onDestinationSelected: controller.selectTab,
-                      destinations: const [
-                        NavigationRailDestination(
-                          icon: Icon(Icons.home_outlined),
-                          selectedIcon: Icon(Icons.home),
-                          label: Text('Home'),
-                        ),
-                        NavigationRailDestination(
-                          icon: Icon(Icons.search),
-                          label: Text('Search'),
-                        ),
-                        NavigationRailDestination(
-                          icon: Icon(Icons.bookmarks_outlined),
-                          selectedIcon: Icon(Icons.bookmarks),
-                          label: Text('Library'),
-                        ),
-                        NavigationRailDestination(
-                          icon: Icon(Icons.settings_outlined),
-                          selectedIcon: Icon(Icons.settings),
-                          label: Text('Settings'),
-                        ),
-                      ],
+    }
+    return AnimatedBuilder(
+      animation: controller,
+      builder: (context, _) {
+        final pages = <Widget>[
+          HomeScreen(controller: controller),
+          SearchScreen(controller: controller),
+          LibraryScreen(controller: controller),
+          SettingsScreen(
+            controller: controller,
+            developerBuilder: developerBuilder,
+            aboutBuilder: aboutBuilder,
+            appearance: appearance,
+            onAppearanceChanged: onAppearanceChanged,
+          ),
+        ];
+        const destinations = [
+          NavigationDestination(
+            icon: Icon(Icons.home_outlined),
+            selectedIcon: Icon(Icons.home),
+            label: 'Home',
+          ),
+          NavigationDestination(icon: Icon(Icons.search), label: 'Search'),
+          NavigationDestination(
+            icon: Icon(Icons.bookmarks_outlined),
+            selectedIcon: Icon(Icons.bookmarks),
+            label: 'Library',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.settings_outlined),
+            selectedIcon: Icon(Icons.settings),
+            label: 'Settings',
+          ),
+        ];
+        final content = SafeArea(
+          child: IndexedStack(index: controller.selectedTab, children: pages),
+        );
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            if (constraints.maxWidth >= 840) {
+              return Scaffold(
+                body: Row(
+                  children: [
+                    SafeArea(
+                      child: NavigationRail(
+                        labelType: NavigationRailLabelType.all,
+                        selectedIndex: controller.selectedTab,
+                        onDestinationSelected: controller.selectTab,
+                        destinations: const [
+                          NavigationRailDestination(
+                            icon: Icon(Icons.home_outlined),
+                            selectedIcon: Icon(Icons.home),
+                            label: Text('Home'),
+                          ),
+                          NavigationRailDestination(
+                            icon: Icon(Icons.search),
+                            label: Text('Search'),
+                          ),
+                          NavigationRailDestination(
+                            icon: Icon(Icons.bookmarks_outlined),
+                            selectedIcon: Icon(Icons.bookmarks),
+                            label: Text('Library'),
+                          ),
+                          NavigationRailDestination(
+                            icon: Icon(Icons.settings_outlined),
+                            selectedIcon: Icon(Icons.settings),
+                            label: Text('Settings'),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                  const VerticalDivider(width: 1),
-                  Expanded(child: content),
-                ],
+                    const VerticalDivider(width: 1),
+                    Expanded(child: content),
+                  ],
+                ),
+              );
+            }
+            return Scaffold(
+              body: content,
+              bottomNavigationBar: NavigationBar(
+                selectedIndex: controller.selectedTab,
+                onDestinationSelected: controller.selectTab,
+                destinations: destinations,
               ),
             );
-          }
-          return Scaffold(
-            body: content,
-            bottomNavigationBar: NavigationBar(
-              selectedIndex: controller.selectedTab,
-              onDestinationSelected: controller.selectTab,
-              destinations: destinations,
-            ),
-          );
-        },
-      );
-    },
-  );
+          },
+        );
+      },
+    );
+  }
 }
 
 class HomeScreen extends StatelessWidget {

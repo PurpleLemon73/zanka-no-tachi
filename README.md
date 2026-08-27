@@ -15,6 +15,10 @@ added after the visual identity is finalized; contributors can capture Home,
 Library, Details, Reader and Player using the deterministic offline samples in
 Settings.
 
+The same Android APK includes a remote-first Android TV / Google TV presentation
+and framework-only Fire OS compatibility. Google TV emulator validation is
+complete; physical Fire TV validation remains outstanding.
+
 ## Features
 
 - Canonical manga/anime records with many source bindings and reviewed merge/split

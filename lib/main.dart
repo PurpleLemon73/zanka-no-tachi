@@ -34,6 +34,7 @@ import 'adapter_platform/adapter_descriptor.dart';
 import 'app/app_identity.dart';
 import 'app/app_preferences.dart';
 import 'app/local_diagnostics.dart';
+import 'app/presentation_mode.dart';
 import 'product/ui/about_screen.dart';
 import 'product/ui/onboarding_screen.dart';
 import 'live_media/live_media_transport.dart';
@@ -57,7 +58,10 @@ Future<void> main() async {
     'lifecycle',
     '${AppIdentity.displayName} ${AppIdentity.version}+${AppIdentity.buildNumber} started',
   );
-  runApp(ZankaApp(diagnostics: diagnostics));
+  final presentationMode = await const PresentationModeDetector().detect();
+  runApp(
+    ZankaApp(diagnostics: diagnostics, presentationMode: presentationMode),
+  );
 }
 
 class ZankaApp extends StatefulWidget {
@@ -68,12 +72,14 @@ class ZankaApp extends StatefulWidget {
     this.diagnostics,
     this.enableOnboarding,
     this.liveMediaTransport,
+    this.presentationMode = PresentationMode.mobile,
   });
   final LiveProviderRepository? repository;
   final AppPreferencesStore? preferences;
   final LocalDiagnostics? diagnostics;
   final bool? enableOnboarding;
   final LiveMediaTransport? liveMediaTransport;
+  final PresentationMode presentationMode;
   @override
   State<ZankaApp> createState() => _ZankaAppState();
 }
@@ -183,7 +189,12 @@ class _ZankaAppState extends State<ZankaApp> {
   }
 
   Future<void> _loadOnboarding() async {
-    final value = await preferences.load();
+    var value = await preferences.load();
+    if (widget.presentationMode == PresentationMode.tv &&
+        !value.onboardingComplete) {
+      await preferences.completeOnboarding();
+      value = value.copyWith(onboardingComplete: true);
+    }
     if (mounted) setState(() => appPreferences = value);
   }
 
@@ -251,6 +262,7 @@ class _ZankaAppState extends State<ZankaApp> {
               aboutBuilder: (_) => AboutZankaScreen(diagnostics: diagnostics),
               appearance: current,
               onAppearanceChanged: _setAppearance,
+              presentationMode: widget.presentationMode,
             ),
     );
   }

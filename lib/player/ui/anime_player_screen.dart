@@ -9,15 +9,45 @@ import '../../canonical/domain/bindings.dart';
 import '../playback_domain.dart';
 import '../playback_repository.dart';
 import '../playback_source.dart';
+import '../android_media_bridge.dart';
+
+enum TvPlayerCommand { toggle, play, pause, seekBackward, seekForward, reveal }
+
+TvPlayerCommand? tvPlayerCommandFor(LogicalKeyboardKey key) {
+  if (key == LogicalKeyboardKey.select ||
+      key == LogicalKeyboardKey.enter ||
+      key == LogicalKeyboardKey.mediaPlayPause) {
+    return TvPlayerCommand.toggle;
+  }
+  if (key == LogicalKeyboardKey.mediaPlay) return TvPlayerCommand.play;
+  if (key == LogicalKeyboardKey.mediaPause) return TvPlayerCommand.pause;
+  if (key == LogicalKeyboardKey.arrowLeft ||
+      key == LogicalKeyboardKey.mediaRewind) {
+    return TvPlayerCommand.seekBackward;
+  }
+  if (key == LogicalKeyboardKey.arrowRight ||
+      key == LogicalKeyboardKey.mediaFastForward) {
+    return TvPlayerCommand.seekForward;
+  }
+  if (key == LogicalKeyboardKey.arrowUp ||
+      key == LogicalKeyboardKey.arrowDown) {
+    return TvPlayerCommand.reveal;
+  }
+  return null;
+}
 
 class AnimePlayerScreen extends StatefulWidget {
   const AnimePlayerScreen({
     super.key,
     required this.repository,
     required this.request,
+    this.isTv = false,
+    this.mediaBridge,
   });
   final PlaybackRepository repository;
   final PlaybackSessionRequest request;
+  final bool isTv;
+  final AndroidMediaBridge? mediaBridge;
 
   @override
   State<AnimePlayerScreen> createState() => _AnimePlayerScreenState();
@@ -33,11 +63,17 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
   Timer? hideTimer;
   Timer? saveTimer;
   bool handledNaturalEnd = false;
+  late final AndroidMediaBridge mediaBridge =
+      widget.mediaBridge ?? AndroidMediaBridge();
+  final FocusNode remoteFocus = FocusNode(debugLabel: 'TV player remote');
+  int lastNativeUpdateSecond = -1;
+  bool? lastNativePlaying;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    mediaBridge.onCommand = _handleMediaCommand;
     unawaited(_open());
   }
 
@@ -72,7 +108,16 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
       if (start > Duration.zero) await video.seekTo(start);
       await video.setPlaybackSpeed(opened.preferences.speed);
       video.addListener(_videoChanged);
-      if (opened.preferences.autoplay) await video.play();
+      await mediaBridge.activate(
+        title: opened.episode.label.rawLabel,
+        episode: opened.manifest.sourceName,
+      );
+      await mediaBridge.update(
+        playing: video.value.isPlaying,
+        position: video.value.position,
+        duration: video.value.duration,
+      );
+      if (opened.preferences.autoplay) await _play(video);
       if (!mounted) {
         await video.dispose();
         return;
@@ -128,6 +173,19 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
       unawaited(_flush());
     });
     final value = controller?.value;
+    if (value != null &&
+        (value.position.inSeconds != lastNativeUpdateSecond ||
+            value.isPlaying != lastNativePlaying)) {
+      lastNativeUpdateSecond = value.position.inSeconds;
+      lastNativePlaying = value.isPlaying;
+      unawaited(
+        mediaBridge.update(
+          playing: value.isPlaying,
+          position: value.position,
+          duration: value.duration,
+        ),
+      );
+    }
     if (!handledNaturalEnd &&
         value != null &&
         value.duration > Duration.zero &&
@@ -147,6 +205,7 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
       MaterialPageRoute<void>(
         builder: (_) => AnimePlayerScreen(
           repository: widget.repository,
+          isTv: widget.isTv,
           request: PlaybackSessionRequest(
             mediaId: current.mediaId,
             episodeId: next.episode.id,
@@ -159,7 +218,7 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
   void _scheduleHide() {
     hideTimer?.cancel();
     if (controller?.value.isPlaying ?? false) {
-      hideTimer = Timer(const Duration(seconds: 3), () {
+      hideTimer = Timer(Duration(seconds: widget.isTv ? 5 : 3), () {
         if (mounted) setState(() => controlsVisible = false);
       });
     }
@@ -189,6 +248,90 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
     _scheduleHide();
   }
 
+  Future<void> _play([VideoPlayerController? target]) async {
+    final video = target ?? controller;
+    if (video == null) return;
+    if (await mediaBridge.requestAudioFocus()) await video.play();
+    _scheduleHide();
+  }
+
+  Future<void> _pause() async {
+    await controller?.pause();
+    if (mounted && widget.isTv) setState(() => controlsVisible = true);
+  }
+
+  Future<void> _togglePlayback() async {
+    if (controller?.value.isPlaying ?? false) {
+      await _pause();
+    } else {
+      await _play();
+    }
+  }
+
+  void _handleMediaCommand(AndroidMediaCommand command) {
+    switch (command) {
+      case AndroidMediaCommand.play:
+        unawaited(_play());
+        break;
+      case AndroidMediaCommand.pause:
+        unawaited(_pause());
+        break;
+      case AndroidMediaCommand.toggle:
+        unawaited(_togglePlayback());
+        break;
+      case AndroidMediaCommand.seekBackward:
+        if (controller != null && session != null) {
+          unawaited(
+            _seek(Duration(seconds: -session!.preferences.seekStepSeconds)),
+          );
+        }
+        break;
+      case AndroidMediaCommand.seekForward:
+        if (controller != null && session != null) {
+          unawaited(
+            _seek(Duration(seconds: session!.preferences.seekStepSeconds)),
+          );
+        }
+        break;
+    }
+  }
+
+  KeyEventResult _handleRemoteKey(FocusNode _, KeyEvent event) {
+    if (!widget.isTv || event is! KeyDownEvent) return KeyEventResult.ignored;
+    final command = tvPlayerCommandFor(event.logicalKey);
+    if (command == null) return KeyEventResult.ignored;
+    setState(() => controlsVisible = true);
+    switch (command) {
+      case TvPlayerCommand.toggle:
+        unawaited(_togglePlayback());
+        break;
+      case TvPlayerCommand.play:
+        unawaited(_play());
+        break;
+      case TvPlayerCommand.pause:
+        unawaited(_pause());
+        break;
+      case TvPlayerCommand.seekBackward:
+        if (controller != null && session != null) {
+          unawaited(
+            _seek(Duration(seconds: -session!.preferences.seekStepSeconds)),
+          );
+        }
+        break;
+      case TvPlayerCommand.seekForward:
+        if (controller != null && session != null) {
+          unawaited(
+            _seek(Duration(seconds: session!.preferences.seekStepSeconds)),
+          );
+        }
+        break;
+      case TvPlayerCommand.reveal:
+        _scheduleHide();
+        break;
+    }
+    return KeyEventResult.handled;
+  }
+
   Future<void> _toggleFullscreen() async {
     fullscreen = !fullscreen;
     if (fullscreen) {
@@ -215,7 +358,25 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
         state == AppLifecycleState.detached) {
       unawaited(controller?.pause());
       unawaited(_flush());
+      unawaited(mediaBridge.deactivate());
+    } else if (state == AppLifecycleState.resumed && session != null) {
+      unawaited(_restoreMediaSession());
     }
+  }
+
+  Future<void> _restoreMediaSession() async {
+    final current = session;
+    final video = controller;
+    if (current == null || video == null) return;
+    await mediaBridge.activate(
+      title: current.episode.label.rawLabel,
+      episode: current.manifest.sourceName,
+    );
+    await mediaBridge.update(
+      playing: video.value.isPlaying,
+      position: video.value.position,
+      duration: video.value.duration,
+    );
   }
 
   @override
@@ -224,17 +385,22 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
     hideTimer?.cancel();
     saveTimer?.cancel();
     controller?.removeListener(_videoChanged);
+    remoteFocus.dispose();
     unawaited(_flush());
     unawaited(controller?.dispose());
+    unawaited(mediaBridge.deactivate());
     if (fullscreen) unawaited(_restoreSystemUi());
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) => PopScope(
-    canPop: !fullscreen,
+    canPop: !fullscreen && (!widget.isTv || !controlsVisible),
     onPopInvokedWithResult: (didPop, _) {
       if (!didPop && fullscreen) unawaited(_toggleFullscreen());
+      if (!didPop && !fullscreen && widget.isTv && controlsVisible) {
+        setState(() => controlsVisible = false);
+      }
     },
     child: Scaffold(
       backgroundColor: Colors.black,
@@ -245,65 +411,72 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
               foregroundColor: Colors.white,
               title: Text(session?.episode.label.rawLabel ?? 'Player'),
             ),
-      body: error != null
-          ? _ErrorState(
-              error: error!,
-              retry: () => _open(),
-              alternate: _openAlternate,
-            )
-          : controller == null || session == null
-          ? const Center(child: CircularProgressIndicator())
-          : GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () {
-                setState(() => controlsVisible = !controlsVisible);
-                if (controlsVisible) _scheduleHide();
-              },
-              onDoubleTapDown: (details) {
-                final width = MediaQuery.sizeOf(context).width;
-                final seconds = session!.preferences.seekStepSeconds;
-                unawaited(
-                  _seek(
-                    Duration(
-                      seconds: details.localPosition.dx < width / 2
-                          ? -seconds
-                          : seconds,
-                    ),
-                  ),
-                );
-              },
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  Center(
-                    child: AspectRatio(
-                      aspectRatio: controller!.value.aspectRatio,
-                      child: VideoPlayer(controller!),
-                    ),
-                  ),
-                  if (controller!.value.isBuffering)
-                    const Center(child: CircularProgressIndicator()),
-                  AnimatedOpacity(
-                    opacity: controlsVisible ? 1 : 0,
-                    duration: const Duration(milliseconds: 180),
-                    child: IgnorePointer(
-                      ignoring: !controlsVisible,
-                      child: _Controls(
-                        session: session!,
-                        controller: controller!,
-                        fullscreen: fullscreen,
-                        onToggleFullscreen: _toggleFullscreen,
-                        onSeek: _seek,
-                        onSources: _showSources,
-                        onEpisodes: _showEpisodes,
-                        onAdjacent: _openAdjacent,
-                        onPreferences: _showPreferences,
+      body: Focus(
+        focusNode: remoteFocus,
+        autofocus: widget.isTv,
+        onKeyEvent: _handleRemoteKey,
+        child: error != null
+            ? _ErrorState(
+                error: error!,
+                retry: () => _open(),
+                alternate: _openAlternate,
+              )
+            : controller == null || session == null
+            ? const Center(child: CircularProgressIndicator())
+            : GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () {
+                  setState(() => controlsVisible = !controlsVisible);
+                  if (controlsVisible) _scheduleHide();
+                },
+                onDoubleTapDown: (details) {
+                  final width = MediaQuery.sizeOf(context).width;
+                  final seconds = session!.preferences.seekStepSeconds;
+                  unawaited(
+                    _seek(
+                      Duration(
+                        seconds: details.localPosition.dx < width / 2
+                            ? -seconds
+                            : seconds,
                       ),
                     ),
-                  ),
-                ],
+                  );
+                },
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Center(
+                      child: AspectRatio(
+                        aspectRatio: controller!.value.aspectRatio,
+                        child: VideoPlayer(controller!),
+                      ),
+                    ),
+                    if (controller!.value.isBuffering)
+                      const Center(child: CircularProgressIndicator()),
+                    AnimatedOpacity(
+                      opacity: controlsVisible ? 1 : 0,
+                      duration: const Duration(milliseconds: 180),
+                      child: IgnorePointer(
+                        ignoring: !controlsVisible,
+                        child: _Controls(
+                          session: session!,
+                          controller: controller!,
+                          fullscreen: fullscreen,
+                          onToggleFullscreen: _toggleFullscreen,
+                          onSeek: _seek,
+                          onSources: _showSources,
+                          onEpisodes: _showEpisodes,
+                          onAdjacent: _openAdjacent,
+                          onPreferences: _showPreferences,
+                          onTogglePlayback: _togglePlayback,
+                          isTv: widget.isTv,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
+      ),
     ),
   );
 
@@ -318,6 +491,7 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
         ),
         builder: (_) => AnimePlayerScreen(
           repository: widget.repository,
+          isTv: widget.isTv,
           request: PlaybackSessionRequest(
             mediaId: session!.mediaId,
             episodeId: session!.episode.id,
@@ -409,6 +583,7 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
         MaterialPageRoute<void>(
           builder: (_) => AnimePlayerScreen(
             repository: widget.repository,
+            isTv: widget.isTv,
             request: PlaybackSessionRequest(
               mediaId: session!.mediaId,
               episodeId: chosen.episode.id,
@@ -428,6 +603,7 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
       MaterialPageRoute<void>(
         builder: (_) => AnimePlayerScreen(
           repository: widget.repository,
+          isTv: widget.isTv,
           request: PlaybackSessionRequest(
             mediaId: session!.mediaId,
             episodeId: value.episode.id,
@@ -517,6 +693,8 @@ class _Controls extends StatelessWidget {
     required this.onEpisodes,
     required this.onAdjacent,
     required this.onPreferences,
+    required this.onTogglePlayback,
+    required this.isTv,
   });
   final PlaybackSession session;
   final VideoPlayerController controller;
@@ -527,6 +705,8 @@ class _Controls extends StatelessWidget {
   final Future<void> Function() onEpisodes;
   final Future<void> Function(int) onAdjacent;
   final Future<void> Function() onPreferences;
+  final Future<void> Function() onTogglePlayback;
+  final bool isTv;
 
   @override
   Widget build(BuildContext context) {
@@ -579,9 +759,8 @@ class _Controls extends StatelessWidget {
                 ),
                 IconButton.filled(
                   tooltip: value.isPlaying ? 'Pause' : 'Play',
-                  onPressed: value.isPlaying
-                      ? controller.pause
-                      : controller.play,
+                  onPressed: onTogglePlayback,
+                  iconSize: isTv ? 42 : 24,
                   icon: Icon(value.isPlaying ? Icons.pause : Icons.play_arrow),
                 ),
                 IconButton(

@@ -1,5 +1,14 @@
 # M10 Product Maturity
 
+## M14 television presentation
+
+Zanka now composes a semantic Android TV/Google TV/Fire OS presentation from the
+same product controller and canonical repositories. It adds a 10-foot Home,
+remote Search/Library/Settings, landscape Anime Details and remote-first player
+without changing phone/tablet flows or creating TV persistence. Shared Smart
+Resume and source-specific timestamps remain the authority. Fire OS physical
+hardware validation remains an explicit release gap.
+
 ## Editing and identity
 
 Imported chapters and episodes can be edited from Details by holding an

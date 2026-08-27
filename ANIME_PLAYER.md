@@ -1,5 +1,16 @@
 # Anime Player — M6
 
+## M14 television controls
+
+Android television presentation reuses the M6 player/session architecture and
+`video_player`. Select toggles playback, Left/Right seek by the saved step,
+Up/Down reveal five-second controls, media keys map to their matching actions,
+and Back hides controls before leaving. A framework Android MediaSession mirrors
+metadata, duration and exact position, while audio focus is requested only when
+play begins. HOME/onStop pauses, flushes canonical and binding-specific progress,
+abandons focus and releases native playback state; return is paused at the exact
+timestamp. See `TV_EXPERIENCE.md` for the complete lifecycle and validation.
+
 ## 1. Playback session boundary
 
 The product boundary is `CanonicalMediaId` → `CanonicalEpisodeId` → optional

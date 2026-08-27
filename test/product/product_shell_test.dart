@@ -12,9 +12,26 @@ import 'package:zanka_no_tachi/live_provider/live_provider_repository.dart';
 import 'package:zanka_no_tachi/live_provider/provider_registry.dart';
 import 'package:zanka_no_tachi/live_provider/provider_transport.dart';
 import 'package:zanka_no_tachi/main.dart';
+import 'package:zanka_no_tachi/app/presentation_mode.dart';
 import 'package:zanka_no_tachi/reader/ui/manga_reader_screen.dart';
 
 void main() {
+  testWidgets('semantic TV mode composes the 10-foot shell', (tester) async {
+    final repository = _repository(CanonicalDatabase(NativeDatabase.memory()));
+    await tester.pumpWidget(
+      ZankaApp(repository: repository, presentationMode: PresentationMode.tv),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('tv-product-shell')), findsOneWidget);
+    expect(find.text('Your TV home is ready'), findsOneWidget);
+    expect(find.byKey(const Key('tv-empty-browse')), findsOneWidget);
+    expect(find.byType(NavigationBar), findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await repository.dispose();
+  });
+
   testWidgets(
     'launches Home with discover sections and Developer is intentional',
     (tester) async {
