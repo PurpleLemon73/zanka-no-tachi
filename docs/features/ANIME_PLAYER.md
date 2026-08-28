@@ -45,14 +45,15 @@ has one 10-second encode. No provider network or protected content is involved.
 
 Capabilities are `metadataOnly`, `playbackCapable`,
 `temporarilyUnavailable`, and `unsupported`. Capability belongs to a registered
-resolver, not to canonical availability. AnimeWorld remains metadata-only and
-never exposes a fake Watch action.
+resolver and verified installment, not merely to canonical availability.
 
 ## 5. Player UI/control architecture
 
-The app uses first-party `video_player` 2.10.1, the newest release compatible
+The app uses first-party `video_player` 2.14.0, the stable release selected for
 with Flutter 3.47.2/Dart 3.13.2. It supplies the platform decoder and texture;
-Zanka owns play/pause, scrubber, elapsed/duration, ±10-second seeks, double-tap
+on Android, Zanka's native MediaSession bridge is the single audio-focus owner
+and `video_player` is configured not to request competing focus. Zanka owns
+play/pause, scrubber, elapsed/duration, ±10-second seeks, double-tap
 seek, buffering indicator, retry, source/episode/settings sheets, previous/next,
 and immersive fullscreen controls. Controls auto-hide after three seconds of
 playback and return on tap.

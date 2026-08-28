@@ -121,5 +121,10 @@ void main() {
     expect(source, contains('MediaSession'));
     expect(source, contains('AudioFocusRequest'));
     expect(source, contains('override fun onStop()'));
+    final player = File(
+      'lib/player/ui/anime_player_screen.dart',
+    ).readAsStringSync();
+    expect(player, contains('VideoPlayerOptions(mixWithOthers: true)'));
+    expect(player, contains('mediaBridge.requestAudioFocus()'));
   });
 }

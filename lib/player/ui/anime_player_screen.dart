@@ -95,11 +95,18 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
     VideoPlayerController? video;
     try {
       opened = await widget.repository.open(widget.request);
+      // The Android MediaSession bridge is the single audio-focus owner.
+      // Otherwise Media3 and the bridge steal focus from each other on TV.
+      final playerOptions = VideoPlayerOptions(mixWithOthers: true);
       video = opened.manifest.isLocalFile
-          ? VideoPlayerController.file(File.fromUri(opened.manifest.uri))
+          ? VideoPlayerController.file(
+              File.fromUri(opened.manifest.uri),
+              videoPlayerOptions: playerOptions,
+            )
           : VideoPlayerController.networkUrl(
               opened.manifest.uri,
               httpHeaders: opened.manifest.httpHeaders,
+              videoPlayerOptions: playerOptions,
             );
       await video.initialize();
       final start = opened.startPosition >= video.value.duration

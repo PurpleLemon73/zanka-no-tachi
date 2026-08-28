@@ -45,6 +45,16 @@ television reader redesign.
 
 The player remains provider-agnostic and continues to use `video_player`.
 
+The native `ZankaPlayback` MediaSession owns Android audio focus. The production
+controller uses `mixWithOthers` only to disable its duplicate Media3 focus
+request; Zanka still requests exclusive movie focus through the native bridge
+before play. This keeps one MediaSession and one focus owner.
+
+On Television_4K at 3840×2160, a verified live AnimeWorld episode sustained
+PLAYING, HOME paused/released the session, return restored the exact source
+timestamp, and D-pad focus/seek remained deterministic. Physical Fire TV
+validation is deferred and no certification is claimed.
+
 | Remote input | Behavior |
 | --- | --- |
 | Select / Enter / Play-Pause | Play or pause |
