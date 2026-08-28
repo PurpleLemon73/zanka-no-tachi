@@ -25,7 +25,7 @@ anti-bot/CAPTCHA bypass and blocked-domain discovery are out of scope.
 
 Fixtures must be lawful, minimized, representative, free of secrets/personal
 data, and parsed offline in normal tests. Add positive and failure tests. Update
-model documentation and `PROJECT_STATE.md` when architecture changes.
+the relevant public document under `docs/` when architecture changes.
 
 Keep PRs focused and explain the user outcome, invariant impact, tests, manual
 validation and migration/backup implications. Never commit build output,

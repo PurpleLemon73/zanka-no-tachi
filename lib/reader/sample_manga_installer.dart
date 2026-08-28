@@ -1,7 +1,7 @@
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
+import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../canonical/domain/bindings.dart';
@@ -29,25 +29,24 @@ class SampleMangaInstaller {
         );
     final chapter1 = Directory('${root.path}/chapter-1');
     await chapter1.create(recursive: true);
-    final colors = [
-      _solidPng(220, 72, 72),
-      _solidPng(61, 166, 91),
-      _solidPng(70, 114, 220),
-      _solidPng(226, 183, 54),
+    final showcasePages = [
+      await _assetBytes('assets/showcase/ashen_blade/cover.png'),
+      await _assetBytes('assets/showcase/ashen_blade/page-01.png'),
+      await _assetBytes('assets/showcase/ashen_blade/page-02.png'),
+      await _assetBytes('assets/showcase/ashen_blade/page-03.png'),
     ];
-    for (var index = 0; index < colors.length; index++) {
+    for (var index = 0; index < showcasePages.length; index++) {
       await File(
         '${chapter1.path}/page-${index + 1}.png',
-      ).writeAsBytes(colors[index], flush: true);
+      ).writeAsBytes(showcasePages[index], flush: true);
     }
+    final cover = File('${root.path}/ashen-blade-cover.png');
+    await cover.writeAsBytes(showcasePages.first, flush: true);
     final cbzPath = '${root.path}/chapter-2.cbz';
     final archive = Archive();
     for (var index = 0; index < 3; index++) {
       archive.add(
-        ArchiveFile.bytes(
-          'page-${index + 1}.png',
-          colors.reversed.elementAt(index),
-        ),
+        ArchiveFile.bytes('page-${index + 1}.png', showcasePages[index + 1]),
       );
     }
     await File(cbzPath).writeAsBytes(ZipEncoder().encode(archive), flush: true);
@@ -56,7 +55,7 @@ class SampleMangaInstaller {
     for (var index = 0; index < 2; index++) {
       await File(
         '${secondFolder.path}/${index + 1}.png',
-      ).writeAsBytes(colors.reversed.elementAt(index), flush: true);
+      ).writeAsBytes(showcasePages[index + 2], flush: true);
     }
 
     final source = FieldProvenance(providerId: localFolderProviderId);
@@ -64,16 +63,14 @@ class SampleMangaInstaller {
       await database.saveMedia(
         CanonicalManga(
           id: sampleMangaId,
-          title: SourcedValue(
-            value: 'Zanka Local Reader Sample',
-            provenance: source,
-          ),
+          title: SourcedValue(value: 'Ashen Blade', provenance: source),
           description: SourcedValue(
             value:
-                'A lawful, generated offline sample for validating the manga reader.',
+                'An elderly one-armed ronin carries a blade of living embers across a realm where every victory leaves another scar in the sky.',
             provenance: source,
           ),
-          status: CanonicalMediaStatus.completed,
+          status: CanonicalMediaStatus.ongoing,
+          coverLocator: cover.path,
         ),
       );
       await database.saveChapter(
@@ -81,7 +78,7 @@ class SampleMangaInstaller {
           id: sampleChapterOneId,
           mediaId: sampleMangaId,
           number: ChapterNumber.parse('Chapter 1'),
-          title: 'Folder pages',
+          title: 'The Cinder Road',
         ),
       );
       await database.saveChapter(
@@ -89,7 +86,7 @@ class SampleMangaInstaller {
           id: sampleChapterTwoId,
           mediaId: sampleMangaId,
           number: ChapterNumber.parse('Chapter 2'),
-          title: 'CBZ pages',
+          title: 'A Cut Across the Sky',
         ),
       );
       await database.saveMediaBinding(
@@ -154,56 +151,7 @@ class SampleMangaInstaller {
   }
 }
 
-Uint8List _solidPng(int red, int green, int blue) {
-  const width = 320;
-  const height = 480;
-  final scanlines = BytesBuilder(copy: false);
-  for (var y = 0; y < height; y++) {
-    scanlines.addByte(0);
-    for (var x = 0; x < width; x++) {
-      final shade = ((x ~/ 32 + y ~/ 48) % 2) * 18;
-      scanlines.add([
-        (red + shade).clamp(0, 255),
-        (green + shade).clamp(0, 255),
-        (blue + shade).clamp(0, 255),
-      ]);
-    }
-  }
-  final header = ByteData(13)
-    ..setUint32(0, width)
-    ..setUint32(4, height)
-    ..setUint8(8, 8)
-    ..setUint8(9, 2);
-  final result = BytesBuilder(copy: false)
-    ..add(const [137, 80, 78, 71, 13, 10, 26, 10])
-    ..add(_pngChunk('IHDR', header.buffer.asUint8List()))
-    ..add(
-      _pngChunk('IDAT', Uint8List.fromList(zlib.encode(scanlines.takeBytes()))),
-    )
-    ..add(_pngChunk('IEND', Uint8List(0)));
-  return result.takeBytes();
-}
-
-Uint8List _pngChunk(String type, Uint8List data) {
-  final typeBytes = type.codeUnits;
-  final result = BytesBuilder(copy: false);
-  final size = ByteData(4)..setUint32(0, data.length);
-  result
-    ..add(size.buffer.asUint8List())
-    ..add(typeBytes)
-    ..add(data);
-  final crcBytes = ByteData(4)..setUint32(0, _crc32([...typeBytes, ...data]));
-  result.add(crcBytes.buffer.asUint8List());
-  return result.takeBytes();
-}
-
-int _crc32(List<int> bytes) {
-  var crc = 0xffffffff;
-  for (final byte in bytes) {
-    crc ^= byte;
-    for (var bit = 0; bit < 8; bit++) {
-      crc = (crc & 1) == 1 ? 0xedb88320 ^ (crc >>> 1) : crc >>> 1;
-    }
-  }
-  return (crc ^ 0xffffffff) & 0xffffffff;
+Future<List<int>> _assetBytes(String path) async {
+  final data = await rootBundle.load(path);
+  return data.buffer.asUint8List();
 }

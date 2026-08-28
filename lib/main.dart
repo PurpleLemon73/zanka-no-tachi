@@ -41,6 +41,9 @@ import 'live_media/live_media_transport.dart';
 import 'live_media/mangaworld_reader_source.dart';
 import 'live_media/animeworld_playback_source.dart';
 
+const _showcaseSeedEnabled = bool.fromEnvironment('ZANKA_SHOWCASE');
+const _showcaseTvEnabled = bool.fromEnvironment('ZANKA_SHOWCASE_TV');
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final diagnostics = LocalDiagnostics();
@@ -58,7 +61,9 @@ Future<void> main() async {
     'lifecycle',
     '${AppIdentity.displayName} ${AppIdentity.version}+${AppIdentity.buildNumber} started',
   );
-  final presentationMode = await const PresentationModeDetector().detect();
+  final presentationMode = _showcaseTvEnabled
+      ? PresentationMode.tv
+      : await const PresentationModeDetector().detect();
   runApp(
     ZankaApp(diagnostics: diagnostics, presentationMode: presentationMode),
   );
@@ -181,6 +186,7 @@ class _ZankaAppState extends State<ZankaApp> {
           ? SearchHistoryStore()
           : SearchHistoryStore.memory(),
     )..initialize();
+    if (_showcaseSeedEnabled) unawaited(_installShowcaseSamples());
     if (widget.enableOnboarding ?? ownsRepository) {
       unawaited(_loadOnboarding());
     } else {
@@ -188,9 +194,16 @@ class _ZankaAppState extends State<ZankaApp> {
     }
   }
 
+  Future<void> _installShowcaseSamples() async {
+    await productController.sampleAnimeInstaller!.install();
+    await productController.sampleInstaller!.install();
+    await productController.refreshLocal();
+  }
+
   Future<void> _loadOnboarding() async {
     var value = await preferences.load();
-    if (widget.presentationMode == PresentationMode.tv &&
+    if ((widget.presentationMode == PresentationMode.tv ||
+            _showcaseSeedEnabled) &&
         !value.onboardingComplete) {
       await preferences.completeOnboarding();
       value = value.copyWith(onboardingComplete: true);

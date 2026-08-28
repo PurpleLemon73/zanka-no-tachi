@@ -82,6 +82,12 @@ hardware](https://developer.android.com/training/tv/get-started/create),
 
 ## Validation evidence
 
+- M15 beta revalidation installed the single adaptive debug APK through the
+  Leanback launcher on an Android TV API 36 ARM64 `Television 4K` AVD. At
+  3840×2160 the TV Home rendered with Browse Anime deterministically focused.
+  The emulator required Vulkan to be disabled/software rendering on this host;
+  that is an emulator graphics setting, not an application fallback.
+
 - Google TV API 36 ARM64 AVD, 1920×1080: the installed APK resolved both normal
   and Leanback launchers. A Leanback cold launch showed the TV shell with Browse
   Anime focused. D-pad Select opened Search; submitting `Nekopara` moved focus

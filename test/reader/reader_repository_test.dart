@@ -18,6 +18,8 @@ import 'package:zanka_no_tachi/reader/reader_source.dart';
 import 'package:zanka_no_tachi/reader/sample_manga_installer.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   late Directory temp;
   late CanonicalDatabase database;
   late ReaderRepository repository;
@@ -79,8 +81,8 @@ void main() {
       expect(bytes, isNotEmpty);
       final codec = await ui.instantiateImageCodec(bytes);
       final frame = await codec.getNextFrame();
-      expect(frame.image.width, 320);
-      expect(frame.image.height, 480);
+      expect(frame.image.width, 1024);
+      expect(frame.image.height, 1536);
       frame.image.dispose();
       codec.dispose();
     },

@@ -1,56 +1,139 @@
 # Zanka no Tachi
 
-Zanka no Tachi is a local-first Flutter manga and anime library. It keeps user
-state against canonical media identities while interchangeable adapters supply
-public metadata or lawful local reading/playback capabilities.
+A source-agnostic manga reader and anime streaming app for Android phones,
+tablets, and TVs.
 
-> This is an independent, unofficial open-source project. It is not affiliated
-> with, endorsed by, or sponsored by Bleach rights holders or by configured
-> content providers. The software grants no rights to third-party content.
+**Android Mobile · Android TV · Google TV · Fire TV**
 
-## Status and screenshots
+Zanka keeps your library and progress attached to canonical media—not to a
+provider URL or provider-local ID. Read lawful local manga, play local video,
+or use compatible public sources without making the product UI provider-aware.
 
-Version **0.1.0** is a pre-release candidate for Android. Screenshots will be
-added after the visual identity is finalized; contributors can capture Home,
-Library, Details, Reader and Player using the deterministic offline samples in
-Settings.
+[Download the first public beta](https://github.com/PurpleLemon73/zanka-no-tachi/releases/tag/v0.2.0-beta.1)
+or [build it yourself](#build-from-source). One adaptive APK selects the mobile
+or 10-foot TV experience from Android's semantic device capabilities.
 
-The same Android APK includes a remote-first Android TV / Google TV presentation
-and framework-only Fire OS compatibility. Google TV emulator validation is
-complete; physical Fire TV validation remains outstanding.
+## See it in action
 
-## Features
+| Mobile Home | Manga details |
+| --- | --- |
+| ![Zanka mobile Home showing the original Nova Pulse and Ashen Blade demo titles](docs/assets/screenshots/mobile/home.png) | ![Ashen Blade manga details and Start reading action](docs/assets/screenshots/mobile/manga-details.png) |
 
-- Canonical manga/anime records with many source bindings and reviewed merge/split
-- Home, bounded provider Search, Library filters and media Details
-- Local folder/CBZ reader and local video player with canonical progress
-- Source-specific resume positions and safe source switching
-- Managed local imports, missing-file repair, storage accounting and cleanup
-- Versioned, data-only, non-destructive backup/restore
-- Capability-driven adapter SDK, enrichment provenance and metadata overrides
-- First-run onboarding and bounded, redacted, local-only diagnostics
+| TV Home | TV anime details |
+| --- | --- |
+| ![Zanka TV Home with visible remote focus and the original Nova Pulse demo](docs/assets/screenshots/tv/home.png) | ![Nova Pulse landscape TV details](docs/assets/screenshots/tv/anime-details.png) |
 
-Metadata-only adapters never pretend to provide pages or streams. The project
-does not implement protected page/stream extraction, DRM bypass, anti-bot
-circumvention or automatic alternate-domain discovery.
+> All screenshots and showcase media use original demo assets created
+> specifically for Zanka. Ashen Blade and Nova Pulse are fictional showcase
+> titles, not provider titles.
+
+## Highlights
+
+- A normal Home, Search, Library, and compact media Details experience
+- Canonical manga/anime identity with multiple interchangeable source bindings
+- Smart Start, Resume, Next, and Completed actions shared across Home/Details
+- Exact source-specific page or timestamp resume, separate from completion
+- Local folder/CBZ manga and local video import, repair, removal, and backup
+- Live MangaWorld reading and AnimeWorld playback when ordinary public media is
+  available; per-installment capability is reported truthfully
+- Paged manga reader with zoom/pan and read/unread controls
+- Anime player with watched/unwatched, autoplay, remote controls, and lifecycle
+  resume
+- Material 3 System/Light/Dark themes with a persisted accent color
+- Remote-first Android TV / Google TV / Fire TV shell with visible D-pad focus
+
+Zanka does not implement authentication, CAPTCHA or anti-bot bypasses, DRM or
+access-control circumvention, protected-content extraction, or automatic domain
+discovery. Metadata-only sources remain metadata-only.
+
+## Install
+
+The beta APK is side-loaded; it is not currently distributed through an app
+store. Download `zanka-no-tachi-v0.2.0-beta.1.apk` from Releases, verify the
+published SHA-256 checksum, then install it:
+
+```bash
+adb install zanka-no-tachi-v0.2.0-beta.1.apk
+```
+
+On a phone or tablet, open Zanka from the launcher and follow onboarding. On
+Android TV / Google TV / Fire TV, send the same APK with ADB or a trusted
+sideloading tool, then open Zanka from Apps. See the complete
+[mobile and TV installation guide](docs/release/INSTALLING.md).
+
+This beta artifact's signing status is stated on its GitHub Release. Never
+install an APK whose checksum or signer differs unexpectedly.
+
+## Phone and tablet
+
+Home surfaces your canonical library and Smart Resume actions. Search is
+bounded and user-driven. Details combines every source for one title, while
+Reader/Player choose only bindings that can actually provide media. Settings
+contains local imports, backups, appearance, maintenance, and diagnostics.
+
+## TV and remote
+
+The TV shell uses a hero and horizontal rails, dedicated landscape anime
+Details, remote-first Search/Library, and player controls that can be summoned
+without touch.
+
+| Remote input | Action |
+| --- | --- |
+| D-pad | Navigate |
+| OK / Select | Activate or play/pause |
+| Left / Right | Navigate; seek while player controls are visible |
+| Play / Pause | Playback |
+| Back | Hide controls or go back |
+
+Android TV and Google TV have emulator validation. The architecture is designed
+for Fire OS without Google Play Services, but physical Fire TV validation is
+still outstanding.
+
+## Sources and local media
+
+MangaWorld and AnimeWorld adapters expose public catalog metadata and only
+promote reader/playback capability when a public delivery path is verified.
+Provider availability can change or drift. Zanka distinguishes network errors,
+parser drift, unsupported delivery, and expired media; a failed source can be
+retried or switched without losing canonical progress.
+
+Your own folders, CBZ archives, and video files use the same source-binding
+architecture. Physical paths are never canonical identity. Missing files remain
+repairable, and portable backups intentionally exclude media bytes and absolute
+paths.
+
+## Beta status
+
+`v0.2.0-beta.1` is an Android public beta. Expect provider markup/delivery to
+change, occasional unsupported live installments, and migration changes before
+1.0. There is no cloud sync, background playback, TV recommendations/channels,
+or TV-specific manga reader. Fire TV runtime validation and production release
+signing remain maintainer follow-ups.
 
 ## Architecture
 
 `CanonicalMedia` owns identity and user state. Provider IDs and locators live in
-source bindings. UI talks to application repositories; HTTP/parsing and local
-payload resolution stay behind adapter/reader/player contracts. Refresh is
-idempotent and must preserve Library/progress. See [DOMAIN_MODEL.md](DOMAIN_MODEL.md),
-[ADAPTER_PLATFORM.md](ADAPTER_PLATFORM.md), and [RELEASE_HARDENING.md](RELEASE_HARDENING.md).
+source bindings. UI calls application repositories; HTTP/parsing and local
+payload resolution stay behind adapter, reader, and player contracts. Refresh
+is idempotent and preserves library/progress.
 
-Local CBZ/folder manga and local video files are imported as ordinary capable
-source bindings; paths never become canonical IDs. Data-only backups omit media
-bytes and absolute paths, so restored local assets are marked missing and can be
-repaired on the destination device.
+Start with the [documentation index](docs/README.md),
+[domain model](docs/architecture/DOMAIN_MODEL.md),
+[adapter platform](docs/architecture/ADAPTER_PLATFORM.md), and
+[release hardening](docs/release/RELEASE_HARDENING.md).
 
-## Build and develop
+## An AI-development experiment
 
-Requirements: Flutter **3.35.4 stable**, Dart 3.9 or compatible, Android SDK,
-and platform tooling required by Flutter.
+Zanka is a personal experiment in autonomous software development: an extended
+Ralph-style workflow with OpenAI Codex building a fully AI-coded manga reader
+and anime streaming app from scratch. The public repository contains the
+product, tests, and durable technical documentation—not its private internal
+prompt/process archive.
+
+## Build from source
+
+Use Flutter 3.35.4 stable with Dart 3.9, a full JDK 17–23, and an Android SDK.
+The current Gradle toolchain does not support Java 25:
 
 ```bash
 flutter pub get
@@ -60,20 +143,18 @@ flutter test
 flutter build apk --debug
 ```
 
-Run with `flutter run`. Install the deterministic manga/anime samples from
-Settings for a network-free reader/player check. Release steps and signing are
-in [docs/RELEASING.md](docs/RELEASING.md).
+Run with `flutter run`. Release signing is maintainer-owned and intentionally
+has no debug-key fallback; see [Releasing](docs/release/RELEASING.md).
 
-## Adding an adapter
+## Privacy, independence, and contributing
 
-Implement the small contracts in `lib/adapter_platform/adapter_sdk.dart`, declare
-an explicit descriptor/capability set, register it once, and test pagination,
-failures, parsing and canonical bindings. Product UI and canonical core must not
-change for a lawful new adapter. Title similarity alone is never a merge signal.
+Diagnostics are local, bounded, and redacted. Zanka has no project-operated
+account or analytics service. Read [PRIVACY.md](PRIVACY.md) for exact behavior.
 
-## Contributing, privacy and license
+Zanka no Tachi is an independent, unofficial open-source project. It is not
+affiliated with, endorsed by, or sponsored by publishers, studios, creators,
+franchise rights holders, or configured content providers. The software and
+this repository grant no rights to third-party content.
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md) before proposing changes. Current local
-and network behavior is documented in [PRIVACY.md](PRIVACY.md). Project-authored
-source is MIT licensed; bundled/generated samples and dependencies retain their
-own applicable terms. Flutter's in-app Licenses page exposes package notices.
+Contributions are welcome under [CONTRIBUTING.md](CONTRIBUTING.md). Project
+source is available under the [MIT License](LICENSE).

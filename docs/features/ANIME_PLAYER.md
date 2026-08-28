@@ -9,7 +9,8 @@ and Back hides controls before leaving. A framework Android MediaSession mirrors
 metadata, duration and exact position, while audio focus is requested only when
 play begins. HOME/onStop pauses, flushes canonical and binding-specific progress,
 abandons focus and releases native playback state; return is paused at the exact
-timestamp. See `TV_EXPERIENCE.md` for the complete lifecycle and validation.
+timestamp. See [TV experience](../tv/TV_EXPERIENCE.md) for the complete
+lifecycle and validation.
 
 ## 1. Playback session boundary
 

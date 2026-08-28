@@ -82,3 +82,6 @@ key.properties
 
 # Local release products
 /artifacts/
+
+# Private milestone prompts, task packs, and process state
+/Milestones/

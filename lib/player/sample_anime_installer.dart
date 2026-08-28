@@ -30,22 +30,26 @@ class SampleAnimeInstaller {
     final primary = await _copyAsset(root, 'episode-1-primary.mp4');
     final alternate = await _copyAsset(root, 'episode-1-alternate.mp4');
     final episodeTwo = await _copyAsset(root, 'episode-2.mp4');
+    final poster = await _copyShowcaseAsset(
+      root,
+      'assets/showcase/nova_pulse/poster.png',
+      'nova-pulse-poster.png',
+    );
     const provenance = FieldProvenance(providerId: localVideoProviderId);
     await database.transaction(() async {
       await database.saveMedia(
-        const CanonicalAnime(
+        CanonicalAnime(
           id: sampleAnimeId,
-          title: SourcedValue(
-            value: 'Zanka Local Player Sample',
-            provenance: provenance,
-          ),
+          title: SourcedValue(value: 'Nova Pulse', provenance: provenance),
           description: SourcedValue(
-            value: 'A lawful generated offline anime playback sample.',
+            value:
+                'A response team races across a neon megacity to understand an energy pulse that predicts disasters moments before they happen.',
             provenance: provenance,
           ),
           status: CanonicalMediaStatus.completed,
           format: AnimeFormat.tv,
           knownEpisodeTotal: 2,
+          coverLocator: poster.path,
         ),
       );
       for (final episode in const [
@@ -53,13 +57,13 @@ class SampleAnimeInstaller {
           id: sampleEpisodeOneId,
           mediaId: sampleAnimeId,
           label: EpisodeLabel(rawLabel: 'Episode 1', number: 1),
-          title: 'Generated test pattern',
+          title: 'Signal at Zero Hour',
         ),
         CanonicalEpisode(
           id: sampleEpisodeTwoId,
           mediaId: sampleAnimeId,
           label: EpisodeLabel(rawLabel: 'Episode 2', number: 2),
-          title: 'Generated second pattern',
+          title: 'The City Between Pulses',
         ),
       ]) {
         await database.saveEpisode(episode);
@@ -120,6 +124,17 @@ class SampleAnimeInstaller {
 
   Future<File> _copyAsset(Directory root, String name) async {
     final data = await rootBundle.load('assets/sample_anime/$name');
+    final file = File('${root.path}/$name');
+    await file.writeAsBytes(data.buffer.asUint8List(), flush: true);
+    return file;
+  }
+
+  Future<File> _copyShowcaseAsset(
+    Directory root,
+    String assetPath,
+    String name,
+  ) async {
+    final data = await rootBundle.load(assetPath);
     final file = File('${root.path}/$name');
     await file.writeAsBytes(data.buffer.asUint8List(), flush: true);
     return file;

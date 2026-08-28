@@ -18,7 +18,13 @@ flutter test
 flutter build apk "--$mode"
 
 source_apk="build/app/outputs/flutter-apk/app-$mode.apk"
+version="$(sed -n 's/^version: \([^+]*\).*/\1/p' pubspec.yaml)"
+artifact="artifacts/zanka-no-tachi-v$version.apk"
 mkdir -p artifacts
-cp "$source_apk" "artifacts/zanka-no-tachi-$mode.apk"
-shasum -a 256 "artifacts/zanka-no-tachi-$mode.apk" > "artifacts/zanka-no-tachi-$mode.apk.sha256"
-echo "Created APK and SHA-256 in artifacts/"
+cp "$source_apk" "$artifact"
+shasum -a 256 "$artifact" > "$artifact.sha256"
+if [[ "$mode" == "debug" ]]; then
+  echo "Created debug-signed development APK and SHA-256: $artifact"
+else
+  echo "Created maintainer-signed release APK and SHA-256: $artifact"
+fi

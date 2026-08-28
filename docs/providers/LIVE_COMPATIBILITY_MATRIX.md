@@ -48,8 +48,8 @@ There was no basis for replacing `video_player` or claiming selectable tracks.
 - Availability is an observation, not a permanent promise. A binding is checked
   when opened and can move between ready, temporarily unavailable, parser
   mismatch and unsupported without changing canonical identity or progress.
-- Physical Android evidence is recorded in `LIVE_RELIABILITY.md` and
-  `PROJECT_STATE.md`; this matrix contains no visual/media artifact.
+- Physical Android evidence is recorded in [Live reliability](LIVE_RELIABILITY.md);
+  this matrix contains no visual/media artifact.
 
 ## Physical matrix confirmation
 
