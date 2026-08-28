@@ -22,7 +22,7 @@ void main() {
   tearDown(() async => temp.delete(recursive: true));
 
   test(
-    'fresh restore preserves IDs/state/preferences and marks omitted asset missing',
+    'beta.1 data-only backup restores into beta.2 with IDs and resumes intact',
     () async {
       final sourceDb = CanonicalDatabase(NativeDatabase.memory());
       final sourceService = LocalLibraryService(
@@ -71,6 +71,15 @@ void main() {
       final backup = await sourceBackup.service.exportDataOnly(
         File('${temp.path}/state.zanka-backup.zip'),
       );
+      final encoded = ZipDecoder().decodeBytes(await backup.readAsBytes());
+      final manifest =
+          jsonDecode(
+                utf8.decode(
+                  encoded.findFile('manifest.json')!.content as List<int>,
+                ),
+              )
+              as Map<String, dynamic>;
+      expect(manifest['version'], zankaBackupVersion);
 
       final targetDb = CanonicalDatabase(
         NativeDatabase(File('${temp.path}/restored.sqlite')),

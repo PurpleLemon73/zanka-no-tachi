@@ -1,37 +1,30 @@
-## Zanka no Tachi v0.2.0-beta.1 — First Public Beta
+## Zanka no Tachi v0.2.0-beta.2 — Production-Signed Beta
 
-### Highlights
+### Important upgrade note
 
-- One adaptive APK for Android phone/tablet and Android TV / Google TV / Fire TV
-- Canonical multi-source library, Smart Resume, and exact source resume
-- Live MangaWorld reader and AnimeWorld player where public delivery is verified
-- Lawful local manga/video import, repair, playback, and portable backup
+Beta.1 was debug-signed. Android cannot install beta.2 over it. Beta.1 users
+must export a Zanka backup outside app storage, uninstall beta.1, install
+beta.2, then restore. Future production-signed releases should update normally.
 
 ### Artifact
 
-- `zanka-no-tachi-v0.2.0-beta.1.apk`
-- Signing: **debug-signed development APK; not production signed**
-- SHA-256: `84ee53798fc19d46b501539403601b5cad17af0db4ceb7f918bae8998a908e6e`
+- `zanka-no-tachi-v0.2.0-beta.2.apk`
+- Package: `dev.zanka.notachi`
+- Version: `0.2.0-beta.2` (`versionCode 3`)
+- Signer SHA-256: `3F:4A:86:F7:F4:DD:A3:98:E0:4D:D0:59:DD:33:D7:FC:27:4C:AC:B3:62:17:A4:68:B6:D8:D7:C7:07:4C:13:41`
+- APK SHA-256: `FILL_FROM_VERIFIED_PIPELINE`
 
-### Validation
+### Release gates
 
-- [ ] CI green
-- [ ] Full Flutter tests/analyze green
-- [ ] Samsung Android 16 smoke test complete
-- [ ] Google TV validation evidence reviewed
-- [ ] APK SHA-256 verified after download
-- [ ] Full reachable Git history/public-hygiene audit passed
+- [ ] clean-tree release pipeline passed
+- [ ] format/analyze/158 tests/debug and release APK builds passed
+- [ ] backup/restore migration passed
+- [ ] Samsung fresh-install UX gate passed
+- [ ] Television_4K 3840×2160 gate passed
+- [ ] signer and downloaded APK checksum independently verified
 
-Physical Fire TV validation remains outstanding. The core TV path does not
-require Google Play Services, but this is not a physical certification claim.
+Physical Fire TV validation remains deferred. Zanka is architecturally Fire
+OS-compatible without Google Play Services, but this is not certification.
 
-### Known limitations
-
-- Provider availability and public delivery shapes may change independently.
-- Protected-content extraction, auth/CAPTCHA/anti-bot bypass, DRM circumvention,
-  and automatic domain discovery are intentionally unsupported.
-- No cloud sync, background playback, TV recommendations, or TV manga redesign.
-
-All screenshots and showcase media use the original fictional Ashen Blade and
-Nova Pulse assets created specifically for Zanka. Zanka is independent and
-unofficial and grants no rights to third-party content.
+Production playback remains `video_player`; the M16 player-engine experiment is
+not included in beta.2.

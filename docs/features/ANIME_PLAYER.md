@@ -51,7 +51,7 @@ never exposes a fake Watch action.
 ## 5. Player UI/control architecture
 
 The app uses first-party `video_player` 2.10.1, the newest release compatible
-with Flutter 3.35.4/Dart 3.9.2. It supplies the platform decoder and texture;
+with Flutter 3.47.2/Dart 3.13.2. It supplies the platform decoder and texture;
 Zanka owns play/pause, scrubber, elapsed/duration, ±10-second seeks, double-tap
 seek, buffering indicator, retry, source/episode/settings sheets, previous/next,
 and immersive fullscreen controls. Controls auto-hide after three seconds of

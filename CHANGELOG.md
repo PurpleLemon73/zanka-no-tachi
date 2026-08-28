@@ -4,6 +4,20 @@ This project follows Semantic Versioning.
 
 ## [Unreleased]
 
+## [0.2.0-beta.2] - 2026-08-28
+
+- Established Zanka's permanent production Android signing identity and a
+  fail-closed release pipeline that verifies package, version, APK signature,
+  signer certificate and checksums.
+- Migrated to Flutter 3.47.2, Dart 3.13.2, Gradle 9.3.1, AGP 9.1.0 and Kotlin
+  2.4.0 while preserving the Android TV/MediaSession integration.
+- Hid source/adapter diagnostics behind an intentional Developer Mode gesture
+  so a fresh install presents only normal product flows.
+- Verified beta.1 backup compatibility for the required
+  backup → uninstall → beta.2 install → restore signing migration.
+- Physical Fire TV validation remains deferred; compatibility is not a Fire TV
+  certification claim.
+
 ## [0.2.0-beta.1] - 2026-08-27
 
 - Added one adaptive Android experience spanning phone/tablet and a dedicated

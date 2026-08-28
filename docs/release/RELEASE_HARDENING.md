@@ -70,7 +70,7 @@ newer major/incompatible releases but no forced upgrade was taken during release
 hardening. Package notices remain available through Flutter's license registry;
 review them again whenever dependencies change.
 
-Versioning starts at 0.1.0+1 under MIT. CI pins Flutter 3.35.4 and runs pub get,
+Versioning starts at 0.1.0+1 under MIT. CI pins Flutter 3.47.2 and runs pub get,
 format, analyze, tests and debug APK build. Release signing never reuses debug
 keys. The RC script emits an APK/checksum for debug testing and fails clearly for
 release mode until ignored maintainer signing is configured.

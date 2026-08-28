@@ -2,8 +2,8 @@
 
 ## Prepare
 
-Use a full JDK 17–23. Gradle 8.12 in this beta does not support Java 25; a JRE
-without `jlink` is also insufficient for Android's JDK image transform.
+Use Flutter 3.47.2's supported Android stack: JDK 17–25, Gradle 9.3.1, AGP
+9.1.0 and Kotlin 2.4.0. A JRE without `jlink` is insufficient.
 
 1. Use a clean checkout and verify no database, backup, imported media, local
    config, keystore or credential is tracked.
@@ -19,23 +19,20 @@ Debug APKs are testing artifacts only: `flutter build apk --debug`.
 
 ## Signed Android release
 
-Signing credentials are never committed. Create a local upload keystore and
-configure signing through ignored `android/key.properties` (or CI secrets), then
-enable the maintainer-owned release signing config in `build.gradle.kts`.
+Signing credentials are never committed. Configure the permanent external key
+through ignored `android/key.properties`; see [Production signing](PRODUCTION_SIGNING.md).
 Release intentionally never falls back to a debug key.
 
 ```bash
-flutter build apk --release
-flutter build appbundle --release
-shasum -a 256 build/app/outputs/flutter-apk/app-release.apk
+tool/release_android.sh
 ```
 
 Without local signing configuration,
 `tool/build_release_candidate.sh release` fails clearly before building.
 
-For the first beta, the locally prepared artifact is explicitly a debug-signed
-development APK because no maintainer release key was supplied. Publish that
-status beside the artifact; never describe it as production signed.
+Beta.1 was debug-signed. Beta.2 and later public Android releases use the
+permanent fingerprint documented above. Publish the required beta.1
+backup/uninstall/install/restore migration warning prominently.
 
 Tag `vX.Y.Z`, draft a GitHub Release from `.github/RELEASE_TEMPLATE.md`, attach
 only the intended artifact/checksum, and verify the downloaded checksum. A future rename

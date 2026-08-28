@@ -1,7 +1,7 @@
 abstract final class AppIdentity {
   static const displayName = 'Zanka no Tachi';
-  static const version = '0.2.0-beta.1';
-  static const buildNumber = '2';
+  static const version = '0.2.0-beta.2';
+  static const buildNumber = '3';
   static const shortDescription =
       'A local-first, canonical manga and anime library.';
   static const repositoryUrl =

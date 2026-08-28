@@ -33,3 +33,7 @@ Public technical and product documentation is grouped by purpose.
 - [Release hardening](release/RELEASE_HARDENING.md)
 - [Maintainer release process](release/RELEASING.md)
 - [v0.2.0-beta.1 release notes](release/v0.2.0-beta.1.md)
+- [v0.2.0-beta.2 release notes](release/v0.2.0-beta.2.md)
+- [Production Android signing](release/PRODUCTION_SIGNING.md)
+- [beta.1 to beta.2 migration](release/BETA1_TO_BETA2_MIGRATION.md)
+- [Deferred Fire TV validation](release/FIRE_TV_VALIDATION.md)

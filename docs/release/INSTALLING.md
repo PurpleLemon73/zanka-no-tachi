@@ -6,11 +6,11 @@ semantic television capability; screen size alone does not activate TV mode.
 
 ## Verify the download
 
-Download `zanka-no-tachi-v0.2.0-beta.1.apk` and its published SHA-256 value from
+Download `zanka-no-tachi-v0.2.0-beta.2.apk` and its published SHA-256 value from
 the same GitHub Release. Compare locally:
 
 ```bash
-shasum -a 256 zanka-no-tachi-v0.2.0-beta.1.apk
+shasum -a 256 zanka-no-tachi-v0.2.0-beta.2.apk
 ```
 
 The release notes state the artifact's actual signing status. Android may warn
@@ -23,7 +23,7 @@ Enable installation from your chosen file manager and open the downloaded APK,
 or connect ADB and run:
 
 ```bash
-adb install zanka-no-tachi-v0.2.0-beta.1.apk
+adb install zanka-no-tachi-v0.2.0-beta.2.apk
 ```
 
 Open Zanka, complete onboarding, then import your own local media or configure a
@@ -37,7 +37,7 @@ the same APK:
 
 ```bash
 adb connect TV_ADDRESS
-adb install zanka-no-tachi-v0.2.0-beta.1.apk
+adb install zanka-no-tachi-v0.2.0-beta.2.apk
 ```
 
 Open Zanka from Apps. It advertises the Leanback launcher category, has a TV
