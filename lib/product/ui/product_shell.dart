@@ -363,7 +363,7 @@ class _SearchScreenState extends State<SearchScreen> {
                   icon: Icons.manage_search,
                   title: 'Search every enabled source',
                   message:
-                      'Results remain separate unless canonical identity has been reviewed and merged.',
+                      'Results stay separate unless you choose to combine them.',
                 )
               : Padding(
                   padding: const EdgeInsets.all(ZankaSpace.md),
