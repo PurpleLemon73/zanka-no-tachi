@@ -74,7 +74,7 @@ class ZankaBackupService {
     try {
       await temporary.writeAsBytes(ZipEncoder().encode(archive), flush: true);
       if (await destination.exists()) await destination.delete();
-      return temporary.rename(destination.path);
+      return await temporary.rename(destination.path);
     } on Object {
       if (await temporary.exists()) await temporary.delete();
       rethrow;

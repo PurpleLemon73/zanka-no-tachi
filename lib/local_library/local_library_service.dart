@@ -117,7 +117,7 @@ class LocalLibraryService {
         );
       }
       await prepared.writeAsBytes(ZipEncoder().encode(archive), flush: true);
-      return importManga(
+      return await importManga(
         LocalImportRequest(
           sourcePath: prepared.path,
           title: request.title,

@@ -200,11 +200,11 @@ class _LocalMediaScreenState extends State<LocalMediaScreen> {
   Future<void> _importManga({bool folder = false}) async {
     final path = folder
         ? await FilePicker.getDirectoryPath(dialogTitle: 'Choose image folder')
-        : (await FilePicker.pickFiles(
+        : (await FilePicker.pickFile(
             type: FileType.custom,
             allowedExtensions: const ['cbz'],
             dialogTitle: 'Choose lawful CBZ',
-          ))?.files.single.path;
+          ))?.path;
     if (path == null || !mounted) return;
     final metadata = await _metadata(CanonicalMediaKind.manga, path);
     if (metadata == null || metadata.title.isEmpty || metadata.label.isEmpty) {
@@ -224,11 +224,11 @@ class _LocalMediaScreenState extends State<LocalMediaScreen> {
   }
 
   Future<void> _importVideo() async {
-    final path = (await FilePicker.pickFiles(
+    final path = (await FilePicker.pickFile(
       type: FileType.custom,
       allowedExtensions: const ['mp4', 'webm', 'mkv', 'mov'],
       dialogTitle: 'Choose lawful local video',
-    ))?.files.single.path;
+    ))?.path;
     if (path == null || !mounted) return;
     final metadata = await _metadata(CanonicalMediaKind.anime, path);
     if (metadata == null || metadata.title.isEmpty || metadata.label.isEmpty) {
@@ -251,18 +251,17 @@ class _LocalMediaScreenState extends State<LocalMediaScreen> {
         ? const ['cbz']
         : const ['mp4', 'webm', 'mkv', 'mov'];
     final selection = await FilePicker.pickFiles(
-      allowMultiple: true,
       type: FileType.custom,
       allowedExtensions: extensions,
       dialogTitle: kind == CanonicalMediaKind.manga
           ? 'Choose lawful CBZ chapters'
           : 'Choose lawful local episodes',
     );
-    final paths = selection?.files
+    final paths = selection
         .map((value) => value.path)
         .whereType<String>()
         .toList();
-    if (paths == null || paths.isEmpty || !mounted) return;
+    if (paths.isEmpty || !mounted) return;
     final batch = LocalBatchImportService(
       local,
       const LocalMediaProbeService(),
@@ -395,11 +394,11 @@ class _LocalMediaScreenState extends State<LocalMediaScreen> {
     final extensions = asset.kind == LocalAssetKind.video
         ? const ['mp4', 'webm', 'mkv', 'mov']
         : const ['cbz'];
-    final path = (await FilePicker.pickFiles(
+    final path = (await FilePicker.pickFile(
       type: FileType.custom,
       allowedExtensions: extensions,
       dialogTitle: 'Choose replacement file',
-    ))?.files.single.path;
+    ))?.path;
     if (path != null) await _run(() => local.repair(asset, path));
   }
 
@@ -559,11 +558,11 @@ class _LocalMediaScreenState extends State<LocalMediaScreen> {
   }
 
   Future<void> _restore() async {
-    final path = (await FilePicker.pickFiles(
+    final path = (await FilePicker.pickFile(
       type: FileType.custom,
       allowedExtensions: const ['zip'],
       dialogTitle: 'Choose Zanka backup',
-    ))?.files.single.path;
+    ))?.path;
     if (path == null || !mounted) return;
     final preview = await widget.controller.backup!.preview(File(path));
     if (!mounted) return;

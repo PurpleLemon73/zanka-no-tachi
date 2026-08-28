@@ -303,11 +303,11 @@ class _MediaDetailsScreenState extends State<MediaDetailsScreen> {
     final extensions = asset.kind == LocalAssetKind.video
         ? const ['mp4', 'webm', 'mkv', 'mov']
         : const ['cbz'];
-    final path = (await FilePicker.pickFiles(
+    final path = (await FilePicker.pickFile(
       type: FileType.custom,
       allowedExtensions: extensions,
       dialogTitle: 'Choose replacement file',
-    ))?.files.single.path;
+    ))?.path;
     if (path == null || !mounted) return;
     final confirmed = await showDialog<bool>(
       context: context,
