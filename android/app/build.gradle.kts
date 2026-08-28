@@ -1,9 +1,22 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
+
+val releaseSigningPropertiesFile = rootProject.file("key.properties")
+val releaseSigningProperties = Properties()
+if (releaseSigningPropertiesFile.isFile) {
+    releaseSigningPropertiesFile.inputStream().use(releaseSigningProperties::load)
+}
+
+fun requiredSigningProperty(name: String): String =
+    requireNotNull(releaseSigningProperties.getProperty(name)?.takeIf(String::isNotBlank)) {
+        "Missing required release-signing property '$name' in android/key.properties"
+    }
 
 android {
     namespace = "dev.zanka.notachi"
@@ -29,11 +42,25 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        if (releaseSigningPropertiesFile.isFile) {
+            create("release") {
+                keyAlias = requiredSigningProperty("keyAlias")
+                keyPassword = requiredSigningProperty("keyPassword")
+                storePassword = requiredSigningProperty("storePassword")
+                storeFile = rootProject.file(requiredSigningProperty("storeFile"))
+                require(storeFile?.isFile == true) {
+                    "Configured release keystore does not exist"
+                }
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // Intentionally unsigned unless a maintainer supplies a release
-            // signing configuration locally. Never fall back to debug keys.
-            signingConfig = null
+            // Never fall back to the debug identity. Public release tooling
+            // additionally verifies the certificate fingerprint after build.
+            signingConfig = signingConfigs.findByName("release")
         }
     }
 }

@@ -68,7 +68,19 @@ void main() {
       expect(find.text('Restore backup'), findsOneWidget);
       await tester.pageBack();
       await tester.pumpAndSettle();
-      await tester.ensureVisible(find.byKey(const Key('open-developer-tools')));
+      expect(find.byKey(const Key('open-developer-tools')), findsNothing);
+      await tester.drag(
+        find.byKey(const PageStorageKey('settings-scroll')),
+        const Offset(0, -1000),
+      );
+      await tester.pumpAndSettle();
+      await tester.longPress(find.byKey(const Key('open-about')));
+      await tester.pumpAndSettle();
+      await tester.drag(
+        find.byKey(const PageStorageKey('settings-scroll')),
+        const Offset(0, -250),
+      );
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('open-developer-tools')));
       await tester.pumpAndSettle();
       expect(find.text('Developer Sources'), findsOneWidget);

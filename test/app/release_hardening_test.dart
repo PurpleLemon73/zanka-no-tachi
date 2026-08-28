@@ -14,6 +14,29 @@ import 'package:zanka_no_tachi/main.dart';
 import 'package:zanka_no_tachi/product/ui/onboarding_screen.dart';
 
 void main() {
+  test('Android production signing stays external and fails closed', () {
+    final rootIgnore = File('.gitignore').readAsStringSync();
+    final androidIgnore = File('android/.gitignore').readAsStringSync();
+    final gradle = File('android/app/build.gradle.kts').readAsStringSync();
+    final releaseTool = File(
+      'tool/build_release_candidate.sh',
+    ).readAsStringSync();
+
+    expect(rootIgnore, contains('key.properties'));
+    expect(rootIgnore, contains('*.jks'));
+    expect(androidIgnore, contains('key.properties'));
+    expect(androidIgnore, contains('**/*.jks'));
+    expect(gradle, contains('rootProject.file("key.properties")'));
+    expect(gradle, contains('signingConfigs.findByName("release")'));
+    expect(gradle, isNot(contains('signingConfigs.getByName("debug")')));
+    expect(releaseTool, contains('Git working tree is not clean'));
+    expect(releaseTool, contains('apksigner'));
+    expect(releaseTool, contains('aapt dump badging'));
+    expect(releaseTool, contains('3F4A86F7F4DDA398E04DD059DD33D7FC'));
+    expect(releaseTool, isNot(contains('storePassword=')));
+    expect(releaseTool, isNot(contains('keyPassword=')));
+  });
+
   test('public identity matches package version metadata', () {
     final pubspec = File('pubspec.yaml').readAsStringSync();
     expect(AppIdentity.displayName, 'Zanka no Tachi');

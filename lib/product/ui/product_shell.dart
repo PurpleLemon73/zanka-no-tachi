@@ -591,7 +591,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
   }
 }
 
-class SettingsScreen extends StatelessWidget {
+class SettingsScreen extends StatefulWidget {
   const SettingsScreen({
     super.key,
     required this.controller,
@@ -605,6 +605,20 @@ class SettingsScreen extends StatelessWidget {
   final WidgetBuilder aboutBuilder;
   final AppPreferences appearance;
   final Future<void> Function(ZankaThemeMode, ZankaAccent) onAppearanceChanged;
+
+  @override
+  State<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends State<SettingsScreen> {
+  bool _developerToolsEnabled = false;
+
+  ProductController get controller => widget.controller;
+  WidgetBuilder get developerBuilder => widget.developerBuilder;
+  WidgetBuilder get aboutBuilder => widget.aboutBuilder;
+  AppPreferences get appearance => widget.appearance;
+  Future<void> Function(ZankaThemeMode, ZankaAccent) get onAppearanceChanged =>
+      widget.onAppearanceChanged;
 
   @override
   Widget build(BuildContext context) => CustomScrollView(
@@ -756,6 +770,12 @@ class SettingsScreen extends StatelessWidget {
                   'About, help, privacy, licenses and local diagnostics.',
                 ),
                 trailing: const Icon(Icons.chevron_right),
+                onLongPress: () {
+                  setState(() => _developerToolsEnabled = true);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Developer tools enabled.')),
+                  );
+                },
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(
                     settings: const RouteSettings(name: '/settings/about'),
@@ -763,22 +783,24 @@ class SettingsScreen extends StatelessWidget {
                   ),
                 ),
               ),
-              const Divider(),
-              ListTile(
-                key: const Key('open-developer-tools'),
-                leading: const Icon(Icons.developer_mode),
-                title: const Text('Developer'),
-                subtitle: const Text(
-                  'Provider health, parser diagnostics, ingestion and reconciliation.',
-                ),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    settings: const RouteSettings(name: '/settings/developer'),
-                    builder: developerBuilder,
+              if (_developerToolsEnabled) ...[
+                const Divider(),
+                ListTile(
+                  key: const Key('open-developer-tools'),
+                  leading: const Icon(Icons.developer_mode),
+                  title: const Text('Developer tools'),
+                  subtitle: const Text('Source and adapter diagnostics.'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      settings: const RouteSettings(
+                        name: '/settings/developer',
+                      ),
+                      builder: developerBuilder,
+                    ),
                   ),
                 ),
-              ),
+              ],
             ],
           ),
         ),
