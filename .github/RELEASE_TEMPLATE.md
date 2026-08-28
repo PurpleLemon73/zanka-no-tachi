@@ -12,7 +12,7 @@ beta.2, then restore. Future production-signed releases should update normally.
 - Package: `dev.zanka.notachi`
 - Version: `0.2.0-beta.2` (`versionCode 3`)
 - Signer SHA-256: `3F:4A:86:F7:F4:DD:A3:98:E0:4D:D0:59:DD:33:D7:FC:27:4C:AC:B3:62:17:A4:68:B6:D8:D7:C7:07:4C:13:41`
-- APK SHA-256: `FILL_FROM_VERIFIED_PIPELINE`
+- APK SHA-256: `3f7dcfd79e41e6efa7ac447899b84c13d937da38bdab5738b7a2894c8b134d23`
 
 ### Release gates
 
