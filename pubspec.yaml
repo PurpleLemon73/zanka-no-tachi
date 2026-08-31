@@ -43,6 +43,11 @@ dependencies:
   path_provider: ^2.1.5
   sqlite3_flutter_libs: ^0.5.39
   video_player: ^2.14.0
+  # M16 experimental spike only. Production remains video_player; Android uses
+  # the default media_kit runtime, never GPL/non-free optional bundles.
+  media_kit: ^1.2.6
+  media_kit_video: ^2.0.1
+  media_kit_libs_android_video: ^1.3.8
 
 dev_dependencies:
   flutter_test:
@@ -72,6 +77,9 @@ flutter:
     - assets/sample_anime/
     - assets/showcase/ashen_blade/
     - assets/showcase/nova_pulse/
+    - assets/m16_playback_probe/
+    - assets/m16_playback_probe/hls/
+    - assets/m16_playback_probe/dash/
 
   # To add assets to your application, add an assets section, like this:
   # assets:

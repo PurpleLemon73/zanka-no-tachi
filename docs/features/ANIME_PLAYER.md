@@ -140,3 +140,13 @@ adapters must register capability, return expiring resources only inside a
 session, translate failures, expose tracks honestly, and never make a stream URL
 or provider token canonical identity. HLS support should be added only with
 bounded refresh/cache behavior and explicit lawful-source evidence.
+
+## M16 engine evaluation
+
+M16 compared an isolated `PlaybackEngine`/`media_kit` spike with the production
+path using original local fixtures. Production remains unchanged:
+`AnimePlayerScreen` still uses `video_player`, Zanka's native MediaSession is the
+sole Android audio-focus owner, and canonical/source-specific resume semantics
+remain intact. Track APIs were stronger, but exact reopen, local HLS/DASH, TV
+integration, APK size, and release-compliance costs did not justify migration.
+See [Playback Engine Evaluation](PLAYBACK_ENGINE_EVALUATION.md).

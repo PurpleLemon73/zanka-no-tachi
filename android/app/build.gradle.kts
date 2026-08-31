@@ -52,6 +52,12 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Keep local/debug probes installable beside the permanent public
+            // signing identity without replacing production user data.
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
+        }
         release {
             // Never fall back to the debug identity. Public release tooling
             // additionally verifies the certificate fingerprint after build.
