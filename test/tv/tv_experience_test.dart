@@ -124,7 +124,13 @@ void main() {
     final player = File(
       'lib/player/ui/anime_player_screen.dart',
     ).readAsStringSync();
-    expect(player, contains('VideoPlayerOptions(mixWithOthers: true)'));
+    final productionEngine = File(
+      'lib/player/video_player_playback_engine.dart',
+    ).readAsStringSync();
+    expect(
+      productionEngine,
+      contains('VideoPlayerOptions(mixWithOthers: true)'),
+    );
     expect(player, contains('mediaBridge.requestAudioFocus()'));
   });
 }

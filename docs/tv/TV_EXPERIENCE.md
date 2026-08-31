@@ -1,5 +1,25 @@
 # Android TV, Google TV and Fire OS experience
 
+## M17 player controls
+
+Player UI v2 retains semantic TV detection and the sole M14 native
+MediaSession/audio-focus owner. With the overlay visible, Left/Right are left to
+focus traversal; dedicated rewind/fast-forward media keys seek. Up/Down reveal
+or move among controls, Select activates the focused action, Back first hides
+the overlay, and HOME pauses, flushes exact source progress, and releases the
+session. Play is the initial transport focus; after natural completion, Next
+Episode is preferred.
+
+Episodes use a lazy D-pad-compatible picker. Unsupported Audio/Subtitles actions
+do not appear. Fire architectural compatibility is retained, but physical Fire
+certification remains deferred because no device is available.
+
+M17 physically exercised completion, Replay/Next Episode, and end-of-available
+content with the lawful local sample on Samsung Android 16. On Television_4K,
+a public direct-MP4 AnimeWorld episode played with the Player UI v2 transport,
+D-pad overlay, and HOME/return source resume. The final debug artifact was then
+installed and launched on both targets. No screenshots or media were retained.
+
 ## Architecture
 
 M14 is a presentation layer inside the same application and canonical core. The
@@ -58,9 +78,10 @@ validation is deferred and no certification is claimed.
 | Remote input | Behavior |
 | --- | --- |
 | Select / Enter / Play-Pause | Play or pause |
-| Left / Rewind | Seek backward by the persisted step |
-| Right / Fast-forward | Seek forward by the persisted step |
-| Up / Down | Reveal controls and context |
+| Left / Right (overlay visible) | Move focus through the current control row |
+| Left / Right (overlay hidden) | Reveal controls and seek by the persisted step |
+| Rewind / Fast-forward | Seek backward / forward by the persisted step |
+| Up / Down | Reveal controls or move between control rows |
 | Back | Hide controls first, exit fullscreen second, then leave player |
 | HOME | System-owned; pause, exact-position flush and native release via lifecycle |
 

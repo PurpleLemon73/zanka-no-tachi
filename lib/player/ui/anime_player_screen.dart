@@ -1,14 +1,13 @@
 import 'dart:async';
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:video_player/video_player.dart';
 
 import '../../canonical/domain/bindings.dart';
 import '../playback_domain.dart';
+import '../playback_engine.dart';
 import '../playback_repository.dart';
 import '../playback_source.dart';
+import '../video_player_playback_engine.dart';
 import '../android_media_bridge.dart';
 
 enum TvPlayerCommand { toggle, play, pause, seekBackward, seekForward, reveal }
@@ -43,11 +42,13 @@ class AnimePlayerScreen extends StatefulWidget {
     required this.request,
     this.isTv = false,
     this.mediaBridge,
+    this.engineRegistry,
   });
   final PlaybackRepository repository;
   final PlaybackSessionRequest request;
   final bool isTv;
   final AndroidMediaBridge? mediaBridge;
+  final PlaybackEngineRegistry? engineRegistry;
 
   @override
   State<AnimePlayerScreen> createState() => _AnimePlayerScreenState();
@@ -56,13 +57,16 @@ class AnimePlayerScreen extends StatefulWidget {
 class _AnimePlayerScreenState extends State<AnimePlayerScreen>
     with WidgetsBindingObserver {
   PlaybackSession? session;
-  VideoPlayerController? controller;
+  PlaybackEngine? engine;
   Object? error;
   bool controlsVisible = true;
   bool fullscreen = false;
   Timer? hideTimer;
   Timer? saveTimer;
   bool handledNaturalEnd = false;
+  bool completionVisible = false;
+  PlaybackEpisodeAvailability? previousEpisode;
+  PlaybackEpisodeAvailability? nextEpisode;
   late final AndroidMediaBridge mediaBridge =
       widget.mediaBridge ?? AndroidMediaBridge();
   final FocusNode remoteFocus = FocusNode(debugLabel: 'TV player remote');
@@ -81,57 +85,51 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
     bool allowMediaRetry = true,
     bool showRecovered = false,
   }) async {
-    final previous = controller;
-    controller = null;
+    final previous = engine;
+    engine = null;
     if (previous != null) {
-      previous.removeListener(_videoChanged);
       await previous.dispose();
     }
     setState(() {
       error = null;
       session = null;
+      completionVisible = false;
+      previousEpisode = null;
+      nextEpisode = null;
+      handledNaturalEnd = false;
     });
     PlaybackSession? opened;
-    VideoPlayerController? video;
+    PlaybackEngine? player;
     try {
       opened = await widget.repository.open(widget.request);
-      // The Android MediaSession bridge is the single audio-focus owner.
-      // Otherwise Media3 and the bridge steal focus from each other on TV.
-      final playerOptions = VideoPlayerOptions(mixWithOthers: true);
-      video = opened.manifest.isLocalFile
-          ? VideoPlayerController.file(
-              File.fromUri(opened.manifest.uri),
-              videoPlayerOptions: playerOptions,
-            )
-          : VideoPlayerController.networkUrl(
-              opened.manifest.uri,
-              httpHeaders: opened.manifest.httpHeaders,
-              videoPlayerOptions: playerOptions,
-            );
-      await video.initialize();
-      final start = opened.startPosition >= video.value.duration
-          ? Duration.zero
-          : opened.startPosition;
-      if (start > Duration.zero) await video.seekTo(start);
-      await video.setPlaybackSpeed(opened.preferences.speed);
-      video.addListener(_videoChanged);
+      final registry =
+          widget.engineRegistry ??
+          PlaybackEngineRegistry(
+            productionBuilder: VideoPlayerPlaybackEngine.new,
+          );
+      player = registry.create().engine;
+      await player.open(opened.manifest, startPosition: opened.startPosition);
+      await player.setPlaybackRate(opened.preferences.speed);
+      player.state.addListener(_engineChanged);
+      previousEpisode = await widget.repository.adjacent(opened, -1);
+      nextEpisode = await widget.repository.adjacent(opened, 1);
       await mediaBridge.activate(
         title: opened.episode.label.rawLabel,
         episode: opened.manifest.sourceName,
       );
       await mediaBridge.update(
-        playing: video.value.isPlaying,
-        position: video.value.position,
-        duration: video.value.duration,
+        playing: player.state.value.isPlaying,
+        position: player.state.value.position,
+        duration: player.state.value.duration,
       );
-      if (opened.preferences.autoplay) await _play(video);
+      if (opened.preferences.autoplay) await _play(player);
       if (!mounted) {
-        await video.dispose();
+        await player.dispose();
         return;
       }
       setState(() {
         session = opened;
-        controller = video;
+        engine = player;
       });
       if (showRecovered) {
         final observer = widget.repository.sources.resolver(
@@ -147,7 +145,7 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
       }
       _scheduleHide();
     } on Object catch (value) {
-      await video?.dispose();
+      await player?.dispose();
       if (allowMediaRetry && opened != null && !opened.manifest.isLocalFile) {
         final observer = widget.repository.sources.resolver(
           opened.manifest.binding.providerId,
@@ -163,13 +161,14 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
     }
   }
 
-  void _videoChanged() {
+  void _engineChanged() {
     if (!mounted) return;
-    if (controller?.value.hasError ?? false) {
+    final value = engine?.state.value;
+    if (value?.phase == PlaybackEnginePhase.failed) {
       setState(() {
         error = PlaybackException(
           PlaybackErrorKind.decoderFailure,
-          controller!.value.errorDescription ?? 'Video decoding failed.',
+          value?.error?.toString() ?? 'Video decoding failed.',
         );
       });
       return;
@@ -179,7 +178,6 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
       saveTimer = null;
       unawaited(_flush());
     });
-    final value = controller?.value;
     if (value != null &&
         (value.position.inSeconds != lastNativeUpdateSecond ||
             value.isPlaying != lastNativePlaying)) {
@@ -193,10 +191,7 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
         ),
       );
     }
-    if (!handledNaturalEnd &&
-        value != null &&
-        value.duration > Duration.zero &&
-        value.position >= value.duration) {
+    if (!handledNaturalEnd && value?.phase == PlaybackEnginePhase.completed) {
       handledNaturalEnd = true;
       unawaited(_naturalEnd());
     }
@@ -206,25 +201,20 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
     await _flush();
     final current = session;
     if (current == null) return;
-    final next = await widget.repository.autoplayNext(current);
-    if (next == null || !mounted) return;
-    await Navigator.of(context).pushReplacement(
-      MaterialPageRoute<void>(
-        builder: (_) => AnimePlayerScreen(
-          repository: widget.repository,
-          isTv: widget.isTv,
-          request: PlaybackSessionRequest(
-            mediaId: current.mediaId,
-            episodeId: next.episode.id,
-          ),
-        ),
-      ),
-    );
+    if (!mounted) return;
+    setState(() {
+      completionVisible = true;
+      controlsVisible = true;
+    });
+    if (current.preferences.autoplayNext &&
+        nextEpisode?.openableBindings.isNotEmpty == true) {
+      await _openAdjacent(1);
+    }
   }
 
   void _scheduleHide() {
     hideTimer?.cancel();
-    if (controller?.value.isPlaying ?? false) {
+    if (engine?.state.value.isPlaying ?? false) {
       hideTimer = Timer(Duration(seconds: widget.isTv ? 5 : 3), () {
         if (mounted) setState(() => controlsVisible = false);
       });
@@ -233,42 +223,36 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
 
   Future<void> _flush() async {
     final current = session;
-    final video = controller;
-    if (current == null || video == null || !video.value.isInitialized) return;
+    final player = engine;
+    if (current == null || player == null) return;
+    final value = player.state.value;
     await widget.repository.savePosition(
       current,
-      video.value.position,
-      video.value.duration,
+      value.position,
+      value.duration,
     );
   }
 
   Future<void> _seek(Duration delta) async {
-    final video = controller!;
-    final target = video.value.position + delta;
-    await video.seekTo(
-      target < Duration.zero
-          ? Duration.zero
-          : target > video.value.duration
-          ? video.value.duration
-          : target,
-    );
+    final player = engine!;
+    await player.seek(player.state.value.position + delta);
     _scheduleHide();
   }
 
-  Future<void> _play([VideoPlayerController? target]) async {
-    final video = target ?? controller;
-    if (video == null) return;
-    if (await mediaBridge.requestAudioFocus()) await video.play();
+  Future<void> _play([PlaybackEngine? target]) async {
+    final player = target ?? engine;
+    if (player == null) return;
+    if (await mediaBridge.requestAudioFocus()) await player.play();
     _scheduleHide();
   }
 
   Future<void> _pause() async {
-    await controller?.pause();
+    await engine?.pause();
     if (mounted && widget.isTv) setState(() => controlsVisible = true);
   }
 
   Future<void> _togglePlayback() async {
-    if (controller?.value.isPlaying ?? false) {
+    if (engine?.state.value.isPlaying ?? false) {
       await _pause();
     } else {
       await _play();
@@ -287,14 +271,14 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
         unawaited(_togglePlayback());
         break;
       case AndroidMediaCommand.seekBackward:
-        if (controller != null && session != null) {
+        if (engine != null && session != null) {
           unawaited(
             _seek(Duration(seconds: -session!.preferences.seekStepSeconds)),
           );
         }
         break;
       case AndroidMediaCommand.seekForward:
-        if (controller != null && session != null) {
+        if (engine != null && session != null) {
           unawaited(
             _seek(Duration(seconds: session!.preferences.seekStepSeconds)),
           );
@@ -307,7 +291,14 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
     if (!widget.isTv || event is! KeyDownEvent) return KeyEventResult.ignored;
     final command = tvPlayerCommandFor(event.logicalKey);
     if (command == null) return KeyEventResult.ignored;
+    final wasVisible = controlsVisible;
     setState(() => controlsVisible = true);
+    if (wasVisible &&
+        (event.logicalKey == LogicalKeyboardKey.arrowLeft ||
+            event.logicalKey == LogicalKeyboardKey.arrowRight)) {
+      _scheduleHide();
+      return KeyEventResult.ignored;
+    }
     switch (command) {
       case TvPlayerCommand.toggle:
         unawaited(_togglePlayback());
@@ -319,14 +310,14 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
         unawaited(_pause());
         break;
       case TvPlayerCommand.seekBackward:
-        if (controller != null && session != null) {
+        if (engine != null && session != null) {
           unawaited(
             _seek(Duration(seconds: -session!.preferences.seekStepSeconds)),
           );
         }
         break;
       case TvPlayerCommand.seekForward:
-        if (controller != null && session != null) {
+        if (engine != null && session != null) {
           unawaited(
             _seek(Duration(seconds: session!.preferences.seekStepSeconds)),
           );
@@ -363,7 +354,7 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
     if (state == AppLifecycleState.inactive ||
         state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
-      unawaited(controller?.pause());
+      unawaited(engine?.pause());
       unawaited(_flush());
       unawaited(mediaBridge.deactivate());
     } else if (state == AppLifecycleState.resumed && session != null) {
@@ -373,16 +364,17 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
 
   Future<void> _restoreMediaSession() async {
     final current = session;
-    final video = controller;
-    if (current == null || video == null) return;
+    final player = engine;
+    if (current == null || player == null) return;
+    final value = player.state.value;
     await mediaBridge.activate(
       title: current.episode.label.rawLabel,
       episode: current.manifest.sourceName,
     );
     await mediaBridge.update(
-      playing: video.value.isPlaying,
-      position: video.value.position,
-      duration: video.value.duration,
+      playing: value.isPlaying,
+      position: value.position,
+      duration: value.duration,
     );
   }
 
@@ -391,10 +383,10 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
     WidgetsBinding.instance.removeObserver(this);
     hideTimer?.cancel();
     saveTimer?.cancel();
-    controller?.removeListener(_videoChanged);
+    engine?.state.removeListener(_engineChanged);
     remoteFocus.dispose();
     unawaited(_flush());
-    unawaited(controller?.dispose());
+    unawaited(engine?.dispose());
     unawaited(mediaBridge.deactivate());
     if (fullscreen) unawaited(_restoreSystemUi());
     super.dispose();
@@ -428,7 +420,7 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
                 retry: () => _open(),
                 alternate: _openAlternate,
               )
-            : controller == null || session == null
+            : engine == null || session == null
             ? const Center(child: CircularProgressIndicator())
             : GestureDetector(
                 behavior: HitTestBehavior.opaque,
@@ -454,11 +446,11 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
                   children: [
                     Center(
                       child: AspectRatio(
-                        aspectRatio: controller!.value.aspectRatio,
-                        child: VideoPlayer(controller!),
+                        aspectRatio: 16 / 9,
+                        child: engine!.buildSurface(),
                       ),
                     ),
-                    if (controller!.value.isBuffering)
+                    if (engine!.state.value.isBuffering)
                       const Center(child: CircularProgressIndicator()),
                     AnimatedOpacity(
                       opacity: controlsVisible ? 1 : 0,
@@ -467,7 +459,10 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
                         ignoring: !controlsVisible,
                         child: _Controls(
                           session: session!,
-                          controller: controller!,
+                          state: engine!.state.value,
+                          capabilities: engine!.capabilities,
+                          hasPrevious: previousEpisode != null,
+                          hasNext: nextEpisode != null,
                           fullscreen: fullscreen,
                           onToggleFullscreen: _toggleFullscreen,
                           onSeek: _seek,
@@ -475,11 +470,21 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
                           onEpisodes: _showEpisodes,
                           onAdjacent: _openAdjacent,
                           onPreferences: _showPreferences,
+                          onAudio: _showAudio,
+                          onSubtitles: _showSubtitles,
                           onTogglePlayback: _togglePlayback,
                           isTv: widget.isTv,
                         ),
                       ),
                     ),
+                    if (completionVisible)
+                      _CompletionOverlay(
+                        hasNext:
+                            nextEpisode?.openableBindings.isNotEmpty == true,
+                        isTv: widget.isTv,
+                        onReplay: _replay,
+                        onNext: () => _openAdjacent(1),
+                      ),
                   ],
                 ),
               ),
@@ -499,6 +504,7 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
         builder: (_) => AnimePlayerScreen(
           repository: widget.repository,
           isTv: widget.isTv,
+          engineRegistry: widget.engineRegistry,
           request: PlaybackSessionRequest(
             mediaId: session!.mediaId,
             episodeId: session!.episode.id,
@@ -559,28 +565,37 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
 
   Future<void> _showEpisodes() async {
     final episodes = await widget.repository.episodes(session!.mediaId);
+    final completed = await widget.repository.completedEpisodes(
+      session!.mediaId,
+    );
     if (!mounted) return;
     final chosen = await showModalBottomSheet<PlaybackEpisodeAvailability>(
       context: context,
       showDragHandle: true,
-      builder: (context) => ListView(
-        children: [
-          const ListTile(title: Text('Episodes')),
-          for (final value in episodes)
-            ListTile(
-              selected: value.episode.id == session!.episode.id,
-              enabled: value.openableBindings.isNotEmpty,
-              title: Text(value.episode.label.rawLabel),
-              subtitle: Text(
-                value.openableBindings.isEmpty
-                    ? 'No playable source'
-                    : '${value.playableBindings.length} source(s)',
-              ),
-              onTap: value.openableBindings.isEmpty
-                  ? null
-                  : () => Navigator.pop(context, value),
+      builder: (context) => ListView.builder(
+        itemCount: episodes.length + 1,
+        itemBuilder: (context, index) {
+          if (index == 0) return const ListTile(title: Text('Episodes'));
+          final value = episodes[index - 1];
+          return ListTile(
+            selected: value.episode.id == session!.episode.id,
+            enabled: value.openableBindings.isNotEmpty,
+            leading: Icon(
+              completed.contains(value.episode.id)
+                  ? Icons.check_circle
+                  : Icons.play_circle_outline,
             ),
-        ],
+            title: Text(value.episode.label.rawLabel),
+            subtitle: Text(
+              value.openableBindings.isEmpty
+                  ? 'No playable source'
+                  : '${value.playableBindings.length} source(s)',
+            ),
+            onTap: value.openableBindings.isEmpty
+                ? null
+                : () => Navigator.pop(context, value),
+          );
+        },
       ),
     );
     if (chosen != null && chosen.episode.id != session!.episode.id && mounted) {
@@ -591,6 +606,7 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
           builder: (_) => AnimePlayerScreen(
             repository: widget.repository,
             isTv: widget.isTv,
+            engineRegistry: widget.engineRegistry,
             request: PlaybackSessionRequest(
               mediaId: session!.mediaId,
               episodeId: chosen.episode.id,
@@ -603,7 +619,18 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
 
   Future<void> _openAdjacent(int direction) async {
     final value = await widget.repository.adjacent(session!, direction);
-    if (value == null || value.openableBindings.isEmpty || !mounted) return;
+    if (!mounted) return;
+    if (value == null) return;
+    if (value.openableBindings.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'That episode has no playable source. Try another source from Details.',
+          ),
+        ),
+      );
+      return;
+    }
     await _flush();
     if (!mounted) return;
     await Navigator.of(context).pushReplacement(
@@ -611,9 +638,11 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
         builder: (_) => AnimePlayerScreen(
           repository: widget.repository,
           isTv: widget.isTv,
+          engineRegistry: widget.engineRegistry,
           request: PlaybackSessionRequest(
             mediaId: session!.mediaId,
             episodeId: value.episode.id,
+            startAtBeginning: direction > 0,
           ),
         ),
       ),
@@ -645,7 +674,7 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
   }
 
   Future<void> _showPreferences() async {
-    final values = const [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
+    final values = const [0.75, 1.0, 1.25, 1.5, 2.0];
     var preferences = session!.preferences;
     final speed = await showModalBottomSheet<double>(
       context: context,
@@ -669,30 +698,105 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
                 if (context.mounted) Navigator.pop(context);
               },
             ),
-            for (final value in values)
-              ListTile(
-                title: Text('$value× speed'),
-                trailing: controller!.value.playbackSpeed == value
-                    ? const Icon(Icons.check)
-                    : null,
-                onTap: () => Navigator.pop(context, value),
-              ),
+            if (engine!.capabilities.canSetPlaybackRate)
+              for (final value in values)
+                ListTile(
+                  title: Text('$value× speed'),
+                  trailing: engine!.state.value.playbackRate == value
+                      ? const Icon(Icons.check)
+                      : null,
+                  onTap: () => Navigator.pop(context, value),
+                ),
           ],
         ),
       ),
     );
     if (speed != null) {
-      await controller!.setPlaybackSpeed(speed);
+      await engine!.setPlaybackRate(speed);
       final preferences = session!.preferences.copyWith(speed: speed);
       await widget.repository.savePreferences(preferences);
     }
+  }
+
+  Future<void> _showAudio() async {
+    final player = engine!;
+    final tracks = player.state.value.audioTracks;
+    final chosen = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => ListView.builder(
+        itemCount: tracks.length + 1,
+        itemBuilder: (context, index) {
+          if (index == 0) return const ListTile(title: Text('Audio'));
+          final track = tracks[index - 1];
+          return ListTile(
+            title: Text(_trackLabel(track)),
+            trailing: player.state.value.selectedAudioTrackId == track.id
+                ? const Icon(Icons.check)
+                : null,
+            onTap: () => Navigator.pop(context, track.id),
+          );
+        },
+      ),
+    );
+    if (chosen != null) await player.selectAudioTrack(chosen);
+  }
+
+  Future<void> _showSubtitles() async {
+    final player = engine!;
+    final tracks = player.state.value.subtitleTracks;
+    final chosen = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => ListView.builder(
+        itemCount: tracks.length + 2,
+        itemBuilder: (context, index) {
+          if (index == 0) return const ListTile(title: Text('Subtitles'));
+          if (index == 1) {
+            return ListTile(
+              title: const Text('Off'),
+              trailing: player.state.value.selectedSubtitleTrackId == null
+                  ? const Icon(Icons.check)
+                  : null,
+              onTap: () => Navigator.pop(context, ''),
+            );
+          }
+          final track = tracks[index - 2];
+          return ListTile(
+            title: Text(_trackLabel(track)),
+            trailing: player.state.value.selectedSubtitleTrackId == track.id
+                ? const Icon(Icons.check)
+                : null,
+            onTap: () => Navigator.pop(context, track.id),
+          );
+        },
+      ),
+    );
+    if (chosen != null) {
+      await player.selectSubtitleTrack(chosen.isEmpty ? null : chosen);
+    }
+  }
+
+  Future<void> _replay() async {
+    // Keep completion handling latched while the engine transitions away from
+    // its terminal frame; some platforms notify the old completed state once
+    // during seekTo(0).
+    handledNaturalEnd = true;
+    if (mounted) setState(() => completionVisible = false);
+    await engine?.seek(Duration.zero);
+    await _play();
+    handledNaturalEnd = false;
+    if (mounted) setState(() {});
   }
 }
 
 class _Controls extends StatelessWidget {
   const _Controls({
     required this.session,
-    required this.controller,
+    required this.state,
+    required this.capabilities,
+    required this.hasPrevious,
+    required this.hasNext,
     required this.fullscreen,
     required this.onToggleFullscreen,
     required this.onSeek,
@@ -700,11 +804,16 @@ class _Controls extends StatelessWidget {
     required this.onEpisodes,
     required this.onAdjacent,
     required this.onPreferences,
+    required this.onAudio,
+    required this.onSubtitles,
     required this.onTogglePlayback,
     required this.isTv,
   });
   final PlaybackSession session;
-  final VideoPlayerController controller;
+  final PlaybackEngineState state;
+  final PlaybackCapabilities capabilities;
+  final bool hasPrevious;
+  final bool hasNext;
   final bool fullscreen;
   final Future<void> Function() onToggleFullscreen;
   final Future<void> Function(Duration) onSeek;
@@ -712,12 +821,13 @@ class _Controls extends StatelessWidget {
   final Future<void> Function() onEpisodes;
   final Future<void> Function(int) onAdjacent;
   final Future<void> Function() onPreferences;
+  final Future<void> Function() onAudio;
+  final Future<void> Function() onSubtitles;
   final Future<void> Function() onTogglePlayback;
   final bool isTv;
 
   @override
   Widget build(BuildContext context) {
-    final value = controller.value;
     final step = session.preferences.seekStepSeconds;
     return ColoredBox(
       color: Colors.black45,
@@ -743,6 +853,18 @@ class _Controls extends StatelessWidget {
                   onPressed: onSources,
                   icon: const Icon(Icons.source, color: Colors.white),
                 ),
+                if (shouldShowAudioControl(capabilities, state))
+                  IconButton(
+                    tooltip: 'Audio',
+                    onPressed: onAudio,
+                    icon: const Icon(Icons.audiotrack, color: Colors.white),
+                  ),
+                if (shouldShowSubtitleControl(capabilities, state))
+                  IconButton(
+                    tooltip: 'Subtitles',
+                    onPressed: onSubtitles,
+                    icon: const Icon(Icons.subtitles, color: Colors.white),
+                  ),
                 IconButton(
                   tooltip: 'Settings',
                   onPressed: onPreferences,
@@ -756,8 +878,11 @@ class _Controls extends StatelessWidget {
               children: [
                 IconButton(
                   tooltip: 'Previous episode',
-                  onPressed: () => onAdjacent(-1),
-                  icon: const Icon(Icons.skip_previous, color: Colors.white),
+                  onPressed: hasPrevious ? () => onAdjacent(-1) : null,
+                  icon: Icon(
+                    Icons.skip_previous,
+                    color: hasPrevious ? Colors.white : Colors.white38,
+                  ),
                 ),
                 IconButton(
                   tooltip: 'Back $step seconds',
@@ -765,10 +890,11 @@ class _Controls extends StatelessWidget {
                   icon: const Icon(Icons.replay_10, color: Colors.white),
                 ),
                 IconButton.filled(
-                  tooltip: value.isPlaying ? 'Pause' : 'Play',
+                  autofocus: isTv,
+                  tooltip: state.isPlaying ? 'Pause' : 'Play',
                   onPressed: onTogglePlayback,
                   iconSize: isTv ? 42 : 24,
-                  icon: Icon(value.isPlaying ? Icons.pause : Icons.play_arrow),
+                  icon: Icon(state.isPlaying ? Icons.pause : Icons.play_arrow),
                 ),
                 IconButton(
                   tooltip: 'Forward $step seconds',
@@ -777,8 +903,11 @@ class _Controls extends StatelessWidget {
                 ),
                 IconButton(
                   tooltip: 'Next episode',
-                  onPressed: () => onAdjacent(1),
-                  icon: const Icon(Icons.skip_next, color: Colors.white),
+                  onPressed: hasNext ? () => onAdjacent(1) : null,
+                  icon: Icon(
+                    Icons.skip_next,
+                    color: hasNext ? Colors.white : Colors.white38,
+                  ),
                 ),
               ],
             ),
@@ -787,23 +916,30 @@ class _Controls extends StatelessWidget {
               children: [
                 const SizedBox(width: 12),
                 Text(
-                  _clock(value.position),
+                  _clock(state.position),
                   style: const TextStyle(color: Colors.white),
                 ),
                 Expanded(
-                  child: VideoProgressIndicator(
-                    controller,
-                    allowScrubbing: true,
-                    padding: const EdgeInsets.all(12),
-                    colors: const VideoProgressColors(
-                      playedColor: Color(0xffff6d3a),
-                      bufferedColor: Colors.white38,
-                      backgroundColor: Colors.white24,
-                    ),
+                  child: Slider(
+                    value: state.duration.inMilliseconds == 0
+                        ? 0
+                        : (state.position.inMilliseconds /
+                                  state.duration.inMilliseconds)
+                              .clamp(0, 1),
+                    onChanged: capabilities.canSeek
+                        ? (value) => onSeek(
+                            Duration(
+                                  milliseconds:
+                                      (state.duration.inMilliseconds * value)
+                                          .round(),
+                                ) -
+                                state.position,
+                          )
+                        : null,
                   ),
                 ),
                 Text(
-                  _clock(value.duration),
+                  _clock(state.duration),
                   style: const TextStyle(color: Colors.white),
                 ),
                 IconButton(
@@ -859,6 +995,63 @@ class _ErrorState extends StatelessWidget {
   );
 }
 
+class _CompletionOverlay extends StatelessWidget {
+  const _CompletionOverlay({
+    required this.hasNext,
+    required this.isTv,
+    required this.onReplay,
+    required this.onNext,
+  });
+
+  final bool hasNext;
+  final bool isTv;
+  final Future<void> Function() onReplay;
+  final Future<void> Function() onNext;
+
+  @override
+  Widget build(BuildContext context) => ColoredBox(
+    color: Colors.black87,
+    child: Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text(
+            'Episode complete',
+            style: TextStyle(color: Colors.white, fontSize: 28),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            hasNext
+                ? 'Ready for the next episode?'
+                : 'End of available episodes',
+            style: const TextStyle(color: Colors.white70),
+          ),
+          const SizedBox(height: 24),
+          FocusTraversalGroup(
+            child: Wrap(
+              spacing: 16,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: onReplay,
+                  icon: const Icon(Icons.replay),
+                  label: const Text('Replay'),
+                ),
+                if (hasNext)
+                  FilledButton.icon(
+                    autofocus: isTv,
+                    onPressed: onNext,
+                    icon: const Icon(Icons.skip_next),
+                    label: const Text('Next Episode'),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
 String _playbackErrorMessage(Object error) => switch (error) {
   PlaybackException(kind: PlaybackErrorKind.sourceUnavailable) =>
     'This source is temporarily unreachable. Retry, or choose another source.',
@@ -879,4 +1072,15 @@ String _clock(Duration value) {
   final minutes = value.inMinutes.remainder(60).toString().padLeft(2, '0');
   final seconds = value.inSeconds.remainder(60).toString().padLeft(2, '0');
   return hours > 0 ? '$hours:$minutes:$seconds' : '${value.inMinutes}:$seconds';
+}
+
+String _trackLabel(PlaybackEngineTrack track) {
+  final label = track.label.trim();
+  final language = track.language?.trim();
+  if (label.isNotEmpty && language != null && language.isNotEmpty) {
+    return '$label · ${language.toUpperCase()}';
+  }
+  if (label.isNotEmpty) return label;
+  if (language != null && language.isNotEmpty) return language.toUpperCase();
+  return 'Unknown track';
 }

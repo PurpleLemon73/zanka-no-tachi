@@ -115,6 +115,79 @@ void main() {
   );
 
   test(
+    'deliberate episode navigation starts at zero without erasing resume',
+    () async {
+      final session = await repository.open(
+        const PlaybackSessionRequest(mediaId: mediaId, episodeId: episodeId),
+      );
+      await repository.savePosition(
+        session,
+        const Duration(seconds: 42),
+        const Duration(minutes: 2),
+      );
+      final deliberateStart = await repository.open(
+        const PlaybackSessionRequest(
+          mediaId: mediaId,
+          episodeId: episodeId,
+          startAtBeginning: true,
+        ),
+      );
+      expect(deliberateStart.startPosition, Duration.zero);
+      final normalResume = await repository.open(
+        const PlaybackSessionRequest(mediaId: mediaId, episodeId: episodeId),
+      );
+      expect(normalResume.startPosition, const Duration(seconds: 42));
+    },
+  );
+
+  test(
+    'canonical first, middle, last and unavailable adjacency is truthful',
+    () async {
+      const second = CanonicalEpisodeId('episode-2');
+      const third = CanonicalEpisodeId('episode-3');
+      for (final item in const [
+        (second, 'Episode 2', 2.0),
+        (third, 'Episode 3', 3.0),
+      ]) {
+        await database.saveEpisode(
+          CanonicalEpisode(
+            id: item.$1,
+            mediaId: mediaId,
+            label: EpisodeLabel(rawLabel: item.$2, number: item.$3),
+          ),
+        );
+      }
+      await database.saveEpisodeBinding(
+        const EpisodeSourceBinding(
+          canonicalId: second,
+          providerId: sourceA,
+          externalId: 'a-2',
+          relativeLocator: '/a2.mp4',
+        ),
+      );
+      await database.saveEpisodeBinding(
+        const EpisodeSourceBinding(
+          canonicalId: third,
+          providerId: ProviderId('metadata-only'),
+          externalId: 'meta-3',
+        ),
+      );
+      final first = await repository.open(
+        const PlaybackSessionRequest(mediaId: mediaId, episodeId: episodeId),
+      );
+      expect(await repository.adjacent(first, -1), isNull);
+      expect((await repository.adjacent(first, 1))?.episode.id, second);
+      final middle = await repository.open(
+        const PlaybackSessionRequest(mediaId: mediaId, episodeId: second),
+      );
+      expect((await repository.adjacent(middle, -1))?.episode.id, episodeId);
+      final unavailable = await repository.adjacent(middle, 1);
+      expect(unavailable?.episode.id, third);
+      expect(unavailable?.openableBindings, isEmpty);
+    },
+  );
+
+  test(
     'switching encode starts at zero and does not copy exact resume',
     () async {
       final first = await repository.open(

@@ -95,10 +95,12 @@ class PlaybackSessionRequest {
     required this.mediaId,
     required this.episodeId,
     this.binding,
+    this.startAtBeginning = false,
   });
   final CanonicalMediaId mediaId;
   final CanonicalEpisodeId episodeId;
   final EpisodeSourceBinding? binding;
+  final bool startAtBeginning;
 }
 
 class PlaybackManifest {

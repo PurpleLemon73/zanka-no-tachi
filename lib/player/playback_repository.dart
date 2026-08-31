@@ -124,6 +124,7 @@ class PlaybackRepository {
       mediaId: mediaId,
       episodeId: episode.id,
       binding: binding,
+      startAtBeginning: request.startAtBeginning,
     );
     PlaybackManifest manifest;
     try {
@@ -150,7 +151,9 @@ class PlaybackRepository {
       mediaId: mediaId,
       episode: episode,
       manifest: manifest,
-      startPosition: resume?.position ?? Duration.zero,
+      startPosition: request.startAtBeginning
+          ? Duration.zero
+          : resume?.position ?? Duration.zero,
       preferences: await preferencesStore.load(),
       resume: resume,
     );
@@ -230,6 +233,12 @@ class PlaybackRepository {
 
   Future<void> markUnwatched(CanonicalEpisodeId episodeId) =>
       database.setEpisodeUnwatched(episodeId);
+
+  Future<Set<CanonicalEpisodeId>> completedEpisodes(
+    CanonicalMediaId mediaId,
+  ) async => (await database.episodeCompletionsFor(
+    mediaId,
+  )).map((completion) => completion.episodeId).toSet();
 
   Future<PlaybackEpisodeAvailability?> autoplayNext(
     PlaybackSession session,

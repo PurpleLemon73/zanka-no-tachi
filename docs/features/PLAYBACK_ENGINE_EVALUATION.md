@@ -1,11 +1,38 @@
 # M16 Playback Engine Evaluation
 
+## M17 production decision
+
+M17 selects **Option 3: reject the experimental media_kit runtime for the
+production application**. Television_4K did not advance HLS/DASH or preserve
+exact reopen, the experiment had no integration with Zanka's single
+MediaSession/audio-focus owner, added roughly 33.3 MB, and lacked a distributable
+LGPL compliance package. Those mandatory gates were not passed.
+
+The production package therefore contains only `video_player`. The probe entry
+point, dependencies, generated plugin registrations, and lawful evaluation
+fixtures were removed. The durable engine contract and registry remain, and an
+unavailable future preference falls back explicitly to the approved production
+engine. Automatic selection never chooses an unapproved engine.
+
+No media_kit/libmpv code ships after M17, so it creates no LGPL runtime
+obligations in the resulting APK. The historical M16 findings below remain the
+evidence behind this decision.
+
+## M17 package verification
+
+A local signed release verification build is 91,913,516 bytes: +229,444 bytes
+from the 91,684,072-byte beta.2 baseline. It has one RSA-4096 signer and the
+established Zanka release certificate. The modest change is Player UI v2 and
+engine-boundary code only; no experimental native media runtime, LGPL fixture,
+or probe entry point is packaged.
+
 ## Decision
 
 `video_player` remains Zanka's production playback engine. The M16
-`media_kit` work is an isolated evaluation target and is not wired into
-`AnimePlayerScreen`, Smart Resume, source resolution, canonical progress,
-watched state, autoplay, or the Android MediaSession bridge.
+`media_kit` work was an isolated evaluation target; it is no longer present in
+the application or its package graph. Canonical progress, watched state,
+autoplay, source resolution, Smart Resume, lifecycle, and the Android
+MediaSession bridge remain engine-neutral application concerns.
 
 The spike demonstrates materially better track APIs, but it does not clear the
 migration rule. On Television_4K the generated MP4 played and exposed two audio
@@ -14,30 +41,22 @@ advance and reopening at an exact timestamp did not retain that timestamp. The
 recommendation is **do not migrate in M17 without a focused reliability
 investigation**.
 
-## Boundary and lawful probe
+## M17 engine boundary and selection policy
 
-`PlaybackEngine` defines open, play/pause, seek, speed, track discovery,
-selection, external subtitles, state streams, and disposal. Production defaults
-to `PlaybackEngineKind.videoPlayer`; the experimental kind requires explicit
-injection or `ZANKA_EXPERIMENTAL_MEDIA_KIT=true`. `MediaKitPlaybackEngine` is
-used only by `lib/m16_playback_probe.dart`. Product widgets still instantiate
-the proven `video_player` controller.
+`PlaybackEngine` defines an engine-neutral surface, open/play/pause/seek/rate
+operations, a `ValueListenable` of phase/buffering/duration/position/error/track
+state, and explicit capabilities. `AnimePlayerScreen` sees no plugin controller,
+libmpv object, or provider implementation. `VideoPlayerPlaybackEngine` is the
+sole production adapter and owns the `video_player` controller.
 
-Debug builds use package suffix `.debug`, so the probe can coexist with the
-permanently signed public app without replacing its data or signing identity.
+The registry selects the approved production adapter for Automatic and
+`video_player`. `mediaKit` remains only a compatibility value for a possible
+future persisted preference: it returns a clear fallback reason and creates the
+production adapter instead. It is neither listed in normal product UI nor
+available for automatic selection. There is no debug flag, probe entry point,
+runtime, or fixture left in this repository after M17.
 
-The probe uses a 12-second original color/test-pattern video with two generated
-tones, an original SRT file, and locally segmented HLS/DASH forms. No provider
-or copyrighted media is retained. Build it with:
-
-```bash
-flutter build apk --debug --target lib/m16_playback_probe.dart
-```
-
-It copies fixtures to its private temporary directory and logs only
-format/result/count/timestamp facts—never media locators.
-
-## Licensing audit
+## Historical M16 licensing audit
 
 Audited inputs:
 
@@ -66,12 +85,13 @@ separately named `encoders-gpl` flavor, which Zanka never references.
 | dav1d | 1.2.0 | BSD-2-Clause |
 | libxml2 | 2.10.3 | MIT |
 
-No GPL or non-free runtime was enabled. Any production migration must ship the
-applicable notices and satisfy LGPL relinking or corresponding-source duties for
-the exact native build. That compliance packaging does not exist today and is
-another reason the spike cannot become production automatically.
+No GPL or non-free runtime was enabled in the historical experiment. Any future
+production migration would still need the applicable notices, relinking or
+corresponding-source duties, and the exact-native-build audit. That compliance
+package was not created. M17 ships none of these dependencies, so this history
+does not create a current APK obligation.
 
-## Comparison evidence
+## Historical M16 comparison evidence
 
 ### Production `video_player`
 
@@ -140,16 +160,16 @@ be credited to media_kit without a real integration.
 | Watched/autoplay/source switch | Pass | Kept outside engine |
 | Fire OS | Physical deferred | Physical deferred |
 
-## Recommendation
+## M17 conclusion
 
-Do not migrate automatically. The Samsung result proves material track and
-format advantages, but the mandatory TV result still fails exact reopen and
-segmented playback. If revisited, first explain those TV failures, implement
-the existing single-owner
-MediaSession/audio-focus contract, add release-grade LGPL compliance, and repeat
-the complete Samsung and TV matrix. Only then consider product injection.
+M17 does not migrate automatically. The Samsung result proved material track and
+format advantages, but Television_4K still failed exact reopen and segmented
+playback. A future experiment must first explain those failures, integrate with
+the existing single-owner MediaSession/audio-focus contract, complete the
+release-grade LGPL package, and repeat the Samsung and TV matrix. Only then
+could it become a product candidate.
 
-The Phase B commit intentionally carries the experimental packages and lawful
-fixtures so the result is reproducible. If M17 does not approve migration, they
-must be removed before the next production release; otherwise an unused native
-runtime and its size/license obligations would enter that artifact.
+M17 removed the experimental packages, generated registrants, probe source, and
+lawful fixtures before this work can enter a production artifact. The Player UI
+v2 and engine-neutral contract remain independently useful with the approved
+production engine.

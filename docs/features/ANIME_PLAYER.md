@@ -1,16 +1,42 @@
 # Anime Player — M6
 
+## Player UI v2 (M17)
+
+The presentation now depends on `PlaybackEngine`, never a plugin controller.
+The production adapter owns every `video_player` object and translates plugin
+state into stable phase, buffering, position, duration, rate, error, track, and
+capability models. Canonical ordering, source choice, completion, exact source
+resume, autoplay, lifecycle, and diagnostics remain outside the engine.
+
+The overlay provides Play/Pause, previous/next canonical episode, ±10 seconds,
+touch timeline seeking, current/total time, episode picker, source, bounded speed
+choices, and fullscreen. The picker renders lazily, identifies the current
+episode, and shows watched state. Manual Next begins at 0:00 without deleting a
+stored source resume; normal Resume and picker navigation retain it.
+
+Natural completion shows Replay and a prominent Next Episode action; on TV,
+Next has default focus. End-of-available content is stated truthfully. Audio and
+subtitle actions render only when an engine reports both the capability and real
+tracks. Production `video_player` reports neither, so no fake selectors appear.
+
+`PlaybackEngineRegistry` deliberately supports Automatic, approved
+`video_player`, and a future preference compatibility value. Automatic always
+chooses the approved production adapter. A removed or unapproved engine value
+falls back with an internal diagnostic reason; it is never shown as normal
+consumer-facing player jargon.
+
 ## M14 television controls
 
 Android television presentation reuses the M6 player/session architecture and
-`video_player`. Select toggles playback, Left/Right seek by the saved step,
-Up/Down reveal five-second controls, media keys map to their matching actions,
-and Back hides controls before leaving. A framework Android MediaSession mirrors
-metadata, duration and exact position, while audio focus is requested only when
-play begins. HOME/onStop pauses, flushes canonical and binding-specific progress,
-abandons focus and releases native playback state; return is paused at the exact
-timestamp. See [TV experience](../tv/TV_EXPERIENCE.md) for the complete
-lifecycle and validation.
+the M17 engine contract. Select toggles playback; with the overlay visible,
+Left/Right move focus between controls, while Rewind/Fast-forward seek by the
+saved step. When the overlay is hidden, Left/Right reveal it and seek. Up/Down
+reveal or move through the control rows, and Back hides controls before leaving.
+A framework Android MediaSession mirrors metadata, duration and exact position,
+while audio focus is requested only when play begins. HOME/onStop pauses, flushes
+canonical and binding-specific progress, abandons focus and releases native
+playback state; return is paused at the exact timestamp. See [TV experience](../tv/TV_EXPERIENCE.md)
+for the complete lifecycle and validation.
 
 ## 1. Playback session boundary
 
@@ -83,9 +109,10 @@ approximate mapping.
 Manifests expose independent `PlaybackTrack` lists for audio and subtitles,
 including stable session IDs, labels, and optional language. Preferences reserve
 preferred audio/subtitle languages. The local sample declares its default audio
-track and no subtitle track. `video_player` 2.10.1 does not expose reliable
-platform audio/subtitle track selection, so the UI truthfully shows Default
-audio and Subtitles Off; external subtitle loading is deferred.
+track and no subtitle track. The production `video_player` adapter does not
+claim reliable platform audio/subtitle selection, so those controls are absent
+rather than presenting a fake selector. External subtitle loading remains
+deferred unless a future approved engine truthfully reports that capability.
 
 ## 9. Episode navigation
 
@@ -141,12 +168,12 @@ session, translate failures, expose tracks honestly, and never make a stream URL
 or provider token canonical identity. HLS support should be added only with
 bounded refresh/cache behavior and explicit lawful-source evidence.
 
-## M16 engine evaluation
+## M16/M17 engine decision
 
-M16 compared an isolated `PlaybackEngine`/`media_kit` spike with the production
-path using original local fixtures. Production remains unchanged:
-`AnimePlayerScreen` still uses `video_player`, Zanka's native MediaSession is the
-sole Android audio-focus owner, and canonical/source-specific resume semantics
-remain intact. Track APIs were stronger, but exact reopen, local HLS/DASH, TV
-integration, APK size, and release-compliance costs did not justify migration.
-See [Playback Engine Evaluation](PLAYBACK_ENGINE_EVALUATION.md).
+M16 compared an isolated `media_kit` spike with the production path using
+original local fixtures. M17 retained the durable engine contract and Player UI
+v2 but rejected that runtime from the package: its Television_4K exact-reopen
+and HLS/DASH gates failed, it had no single-owner MediaSession integration, it
+materially increased APK size, and its LGPL package was incomplete. The
+production `VideoPlayerPlaybackEngine` remains the only adapter. See
+[Playback Engine Evaluation](PLAYBACK_ENGINE_EVALUATION.md).
