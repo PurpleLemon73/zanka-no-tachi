@@ -4,6 +4,19 @@ This project follows Semantic Versioning.
 
 ## [Unreleased]
 
+## [0.2.0-beta.3] - 2026-08-31
+
+- Added Player UI v2 with Previous/Next Episode, Replay, completion actions,
+  a lazy in-player episode picker, timeline scrubbing, and ±10-second seeking.
+- Added TV-first D-pad player navigation alongside mobile touch adaptation,
+  while preserving exact source-specific resume and canonical completion.
+- Introduced an engine-neutral player contract internally; `video_player`
+  remains the sole production engine.
+- Removed the rejected experimental `media_kit` runtime, probe, fixtures, and
+  generated registrations from the production dependency graph and APK.
+- Verified normal in-place Android upgrade continuity from beta.2 with Zanka's
+  permanent production signing identity.
+
 ## [0.2.0-beta.2] - 2026-08-28
 
 - Established Zanka's permanent production Android signing identity and a

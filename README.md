@@ -9,7 +9,7 @@ Zanka keeps your library and progress attached to canonical media—not to a
 provider URL or provider-local ID. Read lawful local manga, play local video,
 or use compatible public sources without making the product UI provider-aware.
 
-[Download the production-signed beta](https://github.com/PurpleLemon73/zanka-no-tachi/releases/tag/v0.2.0-beta.2)
+[Download the production-signed beta](https://github.com/PurpleLemon73/zanka-no-tachi/releases/tag/v0.2.0-beta.3)
 or [build it yourself](#build-from-source). One adaptive APK selects the mobile
 or 10-foot TV experience from Android's semantic device capabilities.
 
@@ -37,8 +37,8 @@ or 10-foot TV experience from Android's semantic device capabilities.
 - Live MangaWorld reading and AnimeWorld playback when ordinary public media is
   available; per-installment capability is reported truthfully
 - Paged manga reader with zoom/pan and read/unread controls
-- Anime player with watched/unwatched, autoplay, remote controls, and lifecycle
-  resume
+- Player UI v2 with previous/next episode, Replay, episode picker, timeline,
+  ±10-second seek, watched/autoplay, remote controls, and lifecycle resume
 - Material 3 System/Light/Dark themes with a persisted accent color
 - Remote-first Android TV / Google TV / Fire TV shell with visible D-pad focus
 
@@ -49,11 +49,11 @@ discovery. Metadata-only sources remain metadata-only.
 ## Install
 
 The beta APK is side-loaded; it is not currently distributed through an app
-store. Download `zanka-no-tachi-v0.2.0-beta.2.apk` from Releases, verify the
+store. Download `zanka-no-tachi-v0.2.0-beta.3.apk` from Releases, verify the
 published SHA-256 checksum, then install it:
 
 ```bash
-adb install zanka-no-tachi-v0.2.0-beta.2.apk
+adb install zanka-no-tachi-v0.2.0-beta.3.apk
 ```
 
 On a phone or tablet, open Zanka from the launcher and follow onboarding. On
@@ -81,7 +81,7 @@ without touch.
 | --- | --- |
 | D-pad | Navigate |
 | OK / Select | Activate or play/pause |
-| Left / Right | Navigate; seek while player controls are visible |
+| Left / Right | Navigate player controls; reveal and seek when the overlay is hidden |
 | Play / Pause | Playback |
 | Back | Hide controls or go back |
 
@@ -104,13 +104,13 @@ paths.
 
 ## Beta status
 
-`v0.2.0-beta.2` is an Android public beta. Beta.1 users must first export a
-backup, uninstall the debug-signed beta.1, install beta.2, and restore. Expect
-provider markup/delivery to
-change, occasional unsupported live installments, and migration changes before
-1.0. There is no cloud sync, background playback, TV recommendations/channels,
-or TV-specific manga reader. Fire TV runtime validation and production release
-signing remain maintainer follow-ups.
+`v0.2.0-beta.3` is an Android public beta. Beta.2 and beta.3 share Zanka's
+permanent production signer and update normally. Beta.1 users must first export
+a backup, uninstall the debug-signed beta.1, install the current beta, and
+restore. Expect provider markup/delivery to change, occasional unsupported live
+installments, and migration changes before 1.0. There is no cloud sync,
+background playback, TV recommendations/channels, or TV-specific manga reader.
+Physical Fire TV runtime validation remains a maintainer follow-up.
 
 ## Architecture
 
@@ -134,8 +134,7 @@ prompt/process archive.
 
 ## Build from source
 
-Use Flutter 3.47.2 stable with Dart 3.13, a full JDK 17–25, and an Android SDK.
-The current Gradle toolchain does not support Java 25:
+Use Flutter 3.47.2 stable with Dart 3.13, a full JDK 17–25, and an Android SDK:
 
 ```bash
 flutter pub get
