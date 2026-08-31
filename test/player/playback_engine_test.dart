@@ -5,6 +5,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zanka_no_tachi/player/playback_domain.dart';
 import 'package:zanka_no_tachi/player/playback_engine.dart';
+import 'package:zanka_no_tachi/player/video_display_mode.dart';
 
 void main() {
   test(
@@ -88,6 +89,28 @@ void main() {
     expect(
       boundedSeek(const Duration(seconds: 20), const Duration(seconds: 12)),
       const Duration(seconds: 12),
+    );
+  });
+
+  test('playback preferences default to safe automatic display geometry', () {
+    final legacy = PlaybackPreferences.fromJson({
+      'seekStepSeconds': 10,
+      'autoplay': true,
+      'speed': 1.0,
+    });
+    expect(legacy.videoDisplayMode, isA<VideoDisplayMode>());
+    expect(legacy.videoDisplayMode.isAutomatic, isTrue);
+    final selected = legacy.copyWith(
+      videoDisplayMode: const VideoDisplayMode(
+        fit: VideoDisplayFit.fitHeight,
+        aspectPreset: VideoAspectPreset.fourThree,
+      ),
+    );
+    expect(
+      PlaybackPreferences.fromJson(
+        selected.toJson(),
+      ).videoDisplayMode.aspectPreset,
+      VideoAspectPreset.fourThree,
     );
   });
 }

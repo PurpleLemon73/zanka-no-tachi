@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import '../../canonical/domain/identifiers.dart';
+import '../../canonical/domain/user_state.dart';
 import '../../product/ui/design_system.dart';
 import '../reader_domain.dart';
 import '../reader_page_cache.dart';
@@ -38,10 +39,17 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
   bool verticalTrackingReady = false;
   bool pagedZoomed = false;
   int zoomResetGeneration = 0;
+  List<ReaderChapterAvailability> chapterNavigation = const [];
+  Set<CanonicalChapterId> completedChapters = const {};
+  CanonicalMangaProgress? canonicalProgress;
+  bool completionVisible = false;
+  bool completionHandled = false;
+  late ReaderSessionRequest activeRequest;
 
   @override
   void initState() {
     super.initState();
+    activeRequest = widget.request;
     WidgetsBinding.instance.addObserver(this);
     if (widget.initialSession case final initial?) {
       session = initial;
@@ -49,6 +57,10 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
       pageController = PageController(initialPage: currentPage);
       scrollController = ScrollController();
       cache.prefetch(initial.manifest, currentPage);
+      unawaited(_refreshNavigation(initial.mediaId));
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _restoreVerticalPage(),
+      );
     } else {
       _open(widget.request);
     }
@@ -56,14 +68,24 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
 
   Future<void> _open(ReaderSessionRequest request) async {
     await _flush();
+    if (!mounted) return;
+    activeRequest = request;
     setState(() {
       session = null;
       error = null;
+      chapterNavigation = const [];
+      completedChapters = const {};
+      canonicalProgress = null;
+      completionVisible = false;
+      completionHandled = false;
     });
     try {
       final value = await widget.repository.open(request);
       currentPage = value.startPage;
       verticalTrackingReady = false;
+      verticalPageKeys.clear();
+      pagedZoomed = false;
+      zoomResetGeneration++;
       pageController?.dispose();
       scrollController?.dispose();
       pageController = PageController(initialPage: currentPage);
@@ -71,12 +93,55 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
       cache.clear();
       cache.prefetch(value.manifest, currentPage);
       if (mounted) setState(() => session = value);
+      await _refreshNavigation(value.mediaId);
       WidgetsBinding.instance.addPostFrameCallback(
         (_) => _restoreVerticalPage(),
       );
     } on Object catch (value) {
       if (mounted) setState(() => error = value);
     }
+  }
+
+  Future<void> _refreshNavigation(CanonicalMediaId mediaId) async {
+    final chapters = await widget.repository.chapters(mediaId);
+    final completed = await widget.repository.completedChapters(mediaId);
+    final progress = await widget.repository.progress(mediaId);
+    if (!mounted || session?.mediaId != mediaId) return;
+    final current = session!;
+    final atEnd = currentPage == current.manifest.pages.length - 1;
+    final completeSinglePage =
+        current.manifest.pages.length == 1 &&
+        !completed.contains(current.chapter.id);
+    setState(() {
+      chapterNavigation = chapters;
+      completedChapters = completed;
+      canonicalProgress = progress;
+      if (atEnd && completed.contains(current.chapter.id)) {
+        completionVisible = true;
+        completionHandled = true;
+      }
+    });
+    if (completeSinglePage && !completionHandled) {
+      completionHandled = true;
+      unawaited(_completeChapter(current));
+    }
+  }
+
+  int get _currentChapterIndex => chapterNavigation.indexWhere(
+    (value) => value.chapter.id == session?.chapter.id,
+  );
+
+  ReaderChapterAvailability? _chapterAtOffset(int direction) {
+    final index = _currentChapterIndex;
+    final target = index + direction;
+    return index < 0 || target < 0 || target >= chapterNavigation.length
+        ? null
+        : chapterNavigation[target];
+  }
+
+  ReaderChapterAvailability? get _currentAvailability {
+    final index = _currentChapterIndex;
+    return index < 0 ? null : chapterNavigation[index];
   }
 
   void _pageChanged(int page) {
@@ -88,7 +153,28 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
     final value = session;
     if (value != null) cache.prefetch(value.manifest, page);
     persistDebounce?.cancel();
-    persistDebounce = Timer(const Duration(milliseconds: 300), _flush);
+    if (value != null &&
+        page == value.manifest.pages.length - 1 &&
+        !completionHandled) {
+      completionHandled = true;
+      unawaited(_completeChapter(value));
+    } else {
+      persistDebounce = Timer(const Duration(milliseconds: 300), _flush);
+    }
+  }
+
+  Future<void> _completeChapter(ReaderSession value) async {
+    persistDebounce?.cancel();
+    await widget.repository.savePosition(
+      value,
+      value.manifest.pages.length - 1,
+    );
+    final completed = await widget.repository.completedChapters(value.mediaId);
+    if (!mounted || session?.chapter.id != value.chapter.id) return;
+    setState(() {
+      completedChapters = completed;
+      completionVisible = true;
+    });
   }
 
   void _restoreVerticalPage() {
@@ -315,7 +401,9 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
   Future<void> _adjacent(int direction) async {
     final value = session;
     if (value == null) return;
-    final chapter = await widget.repository.adjacent(value, direction);
+    final chapter = _currentChapterIndex < 0
+        ? await widget.repository.adjacent(value, direction)
+        : _chapterAtOffset(direction);
     if (!mounted) return;
     if (chapter == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -340,6 +428,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
         ReaderSessionRequest(
           mediaId: value.mediaId,
           chapterId: chapter.chapter.id,
+          startAtBeginning: direction > 0,
         ),
       );
     }
@@ -348,38 +437,178 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
   Future<void> _picker() async {
     final value = session;
     if (value == null) return;
-    final chapters = await widget.repository.chapters(value.mediaId);
-    if (!mounted) return;
-    await showModalBottomSheet<void>(
+    await _flush();
+    var chapters = chapterNavigation;
+    if (chapters.isEmpty) {
+      chapters = await widget.repository.chapters(value.mediaId);
+    }
+    final completed = await widget.repository.completedChapters(value.mediaId);
+    final progress = await widget.repository.progress(value.mediaId);
+    if (!mounted || session?.chapter.id != value.chapter.id) return;
+    setState(() {
+      chapterNavigation = chapters;
+      completedChapters = completed;
+      canonicalProgress = progress;
+    });
+    final volumeLabels = <String>[];
+    for (final chapter in chapters) {
+      final label = chapter.volumeLabel;
+      if (label != null && !volumeLabels.contains(label)) {
+        volumeLabels.add(label);
+      }
+    }
+    final currentVolume = _currentAvailability?.volumeLabel;
+    final volumeIndex = currentVolume == null
+        ? -1
+        : volumeLabels.indexOf(currentVolume);
+    ReaderChapterAvailability firstInVolume(String label) =>
+        chapters.firstWhere((chapter) => chapter.volumeLabel == label);
+
+    final chosen = await showModalBottomSheet<ReaderChapterAvailability>(
       context: context,
       showDragHandle: true,
-      builder: (context) => SafeArea(
-        child: ListView(
-          shrinkWrap: true,
-          children: chapters
-              .map(
-                (chapter) => ListTile(
-                  title: Text(chapter.chapter.number.rawLabel),
-                  subtitle: Text(
-                    chapter.readableBindings.isNotEmpty
-                        ? '${chapter.readableBindings.length} readable source(s)'
-                        : '${chapter.retryableBindings.length} source(s) to retry',
-                  ),
-                  enabled: chapter.openableBindings.isNotEmpty,
-                  selected: chapter.chapter.id == value.chapter.id,
-                  onTap: () {
-                    Navigator.pop(context);
-                    _open(
-                      ReaderSessionRequest(
-                        mediaId: value.mediaId,
-                        chapterId: chapter.chapter.id,
+      isScrollControlled: true,
+      builder: (context) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.8,
+        minChildSize: 0.45,
+        maxChildSize: 0.95,
+        builder: (context, controller) => SafeArea(
+          child: Column(
+            children: [
+              ListTile(
+                title: const Text('Chapters'),
+                subtitle: Text(
+                  currentVolume == null
+                      ? '${chapters.length} canonical chapters'
+                      : '$currentVolume · ${chapters.length} canonical chapters',
+                ),
+                leading: IconButton(
+                  key: const Key('previous-volume'),
+                  tooltip: 'Previous volume',
+                  onPressed: volumeIndex > 0
+                      ? () => Navigator.pop(
+                          context,
+                          firstInVolume(volumeLabels[volumeIndex - 1]),
+                        )
+                      : null,
+                  icon: const Icon(Icons.first_page),
+                ),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (volumeLabels.isNotEmpty)
+                      PopupMenuButton<String>(
+                        key: const Key('volume-picker'),
+                        tooltip: 'Jump to volume',
+                        onSelected: (label) =>
+                            Navigator.pop(context, firstInVolume(label)),
+                        itemBuilder: (context) => [
+                          for (final label in volumeLabels)
+                            PopupMenuItem(value: label, child: Text(label)),
+                        ],
+                        icon: const Icon(Icons.library_books_outlined),
                       ),
+                    IconButton(
+                      key: const Key('next-volume'),
+                      tooltip: 'Next volume',
+                      onPressed:
+                          volumeIndex >= 0 &&
+                              volumeIndex < volumeLabels.length - 1
+                          ? () => Navigator.pop(
+                              context,
+                              firstInVolume(volumeLabels[volumeIndex + 1]),
+                            )
+                          : null,
+                      icon: const Icon(Icons.last_page),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              Expanded(
+                child: ListView.builder(
+                  key: const Key('chapter-picker-list'),
+                  controller: controller,
+                  itemCount: chapters.length,
+                  itemBuilder: (context, index) {
+                    final chapter = chapters[index];
+                    final previousVolume = index == 0
+                        ? null
+                        : chapters[index - 1].volumeLabel;
+                    final volume = chapter.volumeLabel;
+                    final progress = canonicalProgress;
+                    final progressText =
+                        progress?.chapterId == chapter.chapter.id
+                        ? progress!.totalPages == null
+                              ? 'Page ${progress.pageIndex + 1}'
+                              : 'Page ${progress.pageIndex + 1} of ${progress.totalPages}'
+                        : null;
+                    final available = chapter.openableBindings.isNotEmpty;
+                    final sourceText = chapter.readableBindings.isNotEmpty
+                        ? '${chapter.readableBindings.length} readable source(s)'
+                        : chapter.retryableBindings.isNotEmpty
+                        ? '${chapter.retryableBindings.length} source(s) to retry'
+                        : 'No readable source';
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (volume != null && volume != previousVolume)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 18, 16, 4),
+                            child: Text(
+                              volume,
+                              style: Theme.of(context).textTheme.titleSmall,
+                            ),
+                          ),
+                        ListTile(
+                          key: ValueKey(
+                            'chapter-picker-${chapter.chapter.id.value}',
+                          ),
+                          enabled: available,
+                          selected: chapter.chapter.id == value.chapter.id,
+                          leading: Icon(
+                            completedChapters.contains(chapter.chapter.id)
+                                ? Icons.check_circle
+                                : chapter.chapter.id == value.chapter.id
+                                ? Icons.menu_book
+                                : Icons.circle_outlined,
+                          ),
+                          title: Text(chapter.displayLabel),
+                          subtitle: Text(
+                            progressText == null
+                                ? sourceText
+                                : '$progressText · $sourceText',
+                          ),
+                          onTap: available
+                              ? () => Navigator.pop(context, chapter)
+                              : null,
+                        ),
+                      ],
                     );
                   },
                 ),
-              )
-              .toList(),
+              ),
+            ],
+          ),
         ),
+      ),
+    );
+    if (chosen == null || !mounted || chosen.chapter.id == value.chapter.id) {
+      return;
+    }
+    if (chosen.openableBindings.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('That chapter has no readable source configured.'),
+        ),
+      );
+      return;
+    }
+    await _open(
+      ReaderSessionRequest(
+        mediaId: value.mediaId,
+        chapterId: chosen.chapter.id,
       ),
     );
   }
@@ -387,6 +616,9 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
   @override
   Widget build(BuildContext context) {
     final value = session;
+    final currentAvailability = _currentAvailability;
+    final previousChapter = _chapterAtOffset(-1);
+    final nextChapter = _chapterAtOffset(1);
     return PopScope(
       onPopInvokedWithResult: (_, _) => unawaited(_flush()),
       child: Scaffold(
@@ -395,7 +627,21 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
             ? AppBar(
                 backgroundColor: Colors.black87,
                 foregroundColor: Colors.white,
-                title: Text(value?.chapter.number.rawLabel ?? 'Manga reader'),
+                title: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      currentAvailability?.displayLabel ??
+                          value?.chapter.number.rawLabel ??
+                          'Manga reader',
+                    ),
+                    if (currentAvailability?.volumeLabel case final volume?)
+                      Text(
+                        volume,
+                        style: Theme.of(context).textTheme.labelMedium,
+                      ),
+                  ],
+                ),
                 actions: [
                   IconButton(
                     key: const Key('reader-source'),
@@ -415,65 +661,81 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
         body: error != null
             ? _ReaderError(
                 error: error!,
-                retry: () => _open(widget.request),
+                retry: () => _open(activeRequest),
                 alternate: _openAlternate,
               )
             : value == null
             ? const Center(child: CircularProgressIndicator())
-            : GestureDetector(
-                behavior: HitTestBehavior.translucent,
-                onTap: () => setState(() => controlsVisible = !controlsVisible),
-                child: value.preferences.mode == ReaderMode.paged
-                    ? PageView.builder(
-                        key: const Key('paged-reader'),
-                        controller: pageController,
-                        physics: pagedZoomed
-                            ? const NeverScrollableScrollPhysics()
-                            : const PageScrollPhysics(),
-                        reverse:
-                            value.preferences.direction ==
-                            ReaderDirection.rightToLeft,
-                        itemCount: value.manifest.pages.length,
-                        onPageChanged: _pageChanged,
-                        itemBuilder: (_, index) => _ZoomableReaderPage(
-                          key: ValueKey(
-                            'zoom-page-$index-$zoomResetGeneration',
-                          ),
-                          active: index == currentPage,
-                          onZoomChanged: (zoomed) {
-                            if (index == currentPage && pagedZoomed != zoomed) {
-                              setState(() => pagedZoomed = zoomed);
-                            }
-                          },
-                          child: _ReaderPageView(
-                            page: value.manifest.pages[index],
-                            cache: cache,
-                            fit: value.preferences.fit,
-                          ),
-                        ),
-                      )
-                    : NotificationListener<ScrollNotification>(
-                        onNotification: (notification) {
-                          _updateVisiblePage();
-                          return false;
-                        },
-                        child: ListView.builder(
-                          key: const Key('vertical-reader'),
-                          controller: scrollController,
-                          itemCount: value.manifest.pages.length,
-                          itemBuilder: (_, index) => KeyedSubtree(
-                            key: verticalPageKeys.putIfAbsent(
-                              index,
-                              GlobalKey.new,
+            : Stack(
+                fit: StackFit.expand,
+                children: [
+                  GestureDetector(
+                    behavior: HitTestBehavior.translucent,
+                    onTap: () =>
+                        setState(() => controlsVisible = !controlsVisible),
+                    child: value.preferences.mode == ReaderMode.paged
+                        ? PageView.builder(
+                            key: const Key('paged-reader'),
+                            controller: pageController,
+                            physics: pagedZoomed
+                                ? const NeverScrollableScrollPhysics()
+                                : const PageScrollPhysics(),
+                            reverse:
+                                value.preferences.direction ==
+                                ReaderDirection.rightToLeft,
+                            itemCount: value.manifest.pages.length,
+                            onPageChanged: _pageChanged,
+                            itemBuilder: (_, index) => _ZoomableReaderPage(
+                              key: ValueKey(
+                                'zoom-page-$index-$zoomResetGeneration',
+                              ),
+                              active: index == currentPage,
+                              onZoomChanged: (zoomed) {
+                                if (index == currentPage &&
+                                    pagedZoomed != zoomed) {
+                                  setState(() => pagedZoomed = zoomed);
+                                }
+                              },
+                              child: _ReaderPageView(
+                                page: value.manifest.pages[index],
+                                cache: cache,
+                                fit: value.preferences.fit,
+                              ),
                             ),
-                            child: _ReaderPageView(
-                              page: value.manifest.pages[index],
-                              cache: cache,
-                              fit: value.preferences.fit,
+                          )
+                        : NotificationListener<ScrollNotification>(
+                            onNotification: (notification) {
+                              _updateVisiblePage();
+                              return false;
+                            },
+                            child: ListView.builder(
+                              key: const Key('vertical-reader'),
+                              controller: scrollController,
+                              itemCount: value.manifest.pages.length,
+                              itemBuilder: (_, index) => KeyedSubtree(
+                                key: verticalPageKeys.putIfAbsent(
+                                  index,
+                                  GlobalKey.new,
+                                ),
+                                child: _ReaderPageView(
+                                  page: value.manifest.pages[index],
+                                  cache: cache,
+                                  fit: value.preferences.fit,
+                                ),
+                              ),
                             ),
                           ),
-                        ),
-                      ),
+                  ),
+                  if (completionVisible)
+                    _ChapterCompletionOverlay(
+                      previousChapter: previousChapter,
+                      nextChapter: nextChapter,
+                      onDismiss: () =>
+                          setState(() => completionVisible = false),
+                      onNext: () => _adjacent(1),
+                      onPrevious: () => _adjacent(-1),
+                    ),
+                ],
               ),
         bottomNavigationBar: controlsVisible && value != null
             ? BottomAppBar(
@@ -484,8 +746,16 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                       key: const Key('previous-chapter'),
                       tooltip: 'Previous chapter',
                       color: Colors.white,
-                      onPressed: () => _adjacent(-1),
-                      icon: const Icon(Icons.skip_previous),
+                      disabledColor: Colors.white38,
+                      onPressed: previousChapter == null
+                          ? null
+                          : () => _adjacent(-1),
+                      icon: Icon(
+                        Icons.skip_previous,
+                        color: previousChapter == null
+                            ? Colors.white38
+                            : Colors.white,
+                      ),
                     ),
                     IconButton(
                       key: const Key('chapter-picker'),
@@ -517,8 +787,16 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                       key: const Key('next-chapter'),
                       tooltip: 'Next chapter',
                       color: Colors.white,
-                      onPressed: () => _adjacent(1),
-                      icon: const Icon(Icons.skip_next),
+                      disabledColor: Colors.white38,
+                      onPressed: nextChapter == null
+                          ? null
+                          : () => _adjacent(1),
+                      icon: Icon(
+                        Icons.skip_next,
+                        color: nextChapter == null
+                            ? Colors.white38
+                            : Colors.white,
+                      ),
                     ),
                   ],
                 ),
@@ -529,11 +807,11 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
   }
 
   Future<void> _openAlternate() async {
-    final chapters = await widget.repository.chapters(widget.request.mediaId);
+    final chapters = await widget.repository.chapters(activeRequest.mediaId);
     final chapter = chapters
-        .where((value) => value.chapter.id == widget.request.chapterId)
+        .where((value) => value.chapter.id == activeRequest.chapterId)
         .firstOrNull;
-    final current = widget.request.binding;
+    final current = activeRequest.binding;
     final alternate = chapter?.openableBindings
         .where(
           (value) =>
@@ -552,9 +830,90 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
     }
     await _open(
       ReaderSessionRequest(
-        mediaId: widget.request.mediaId,
-        chapterId: widget.request.chapterId,
+        mediaId: activeRequest.mediaId,
+        chapterId: activeRequest.chapterId,
         binding: alternate,
+        startAtBeginning: activeRequest.startAtBeginning,
+      ),
+    );
+  }
+}
+
+class _ChapterCompletionOverlay extends StatelessWidget {
+  const _ChapterCompletionOverlay({
+    required this.previousChapter,
+    required this.nextChapter,
+    required this.onDismiss,
+    required this.onNext,
+    required this.onPrevious,
+  });
+
+  final ReaderChapterAvailability? previousChapter;
+  final ReaderChapterAvailability? nextChapter;
+  final VoidCallback onDismiss;
+  final Future<void> Function() onNext;
+  final Future<void> Function() onPrevious;
+
+  @override
+  Widget build(BuildContext context) {
+    final next = nextChapter;
+    final nextReadable = next?.openableBindings.isNotEmpty == true;
+    final previousReadable =
+        previousChapter?.openableBindings.isNotEmpty == true;
+    return ColoredBox(
+      color: Colors.black87,
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.check_circle, color: Colors.white, size: 52),
+              const SizedBox(height: 12),
+              const Text(
+                'Chapter complete',
+                style: TextStyle(color: Colors.white, fontSize: 28),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                next == null
+                    ? 'End of available chapters'
+                    : nextReadable
+                    ? 'Next: ${next.displayLabel}'
+                    : 'The next chapter has no readable source.',
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.white70),
+              ),
+              const SizedBox(height: 24),
+              Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                alignment: WrapAlignment.center,
+                children: [
+                  OutlinedButton(
+                    key: const Key('dismiss-chapter-completion'),
+                    onPressed: onDismiss,
+                    child: const Text('Stay on chapter'),
+                  ),
+                  if (previousChapter != null)
+                    OutlinedButton.icon(
+                      key: const Key('completion-previous-chapter'),
+                      onPressed: previousReadable ? onPrevious : null,
+                      icon: const Icon(Icons.skip_previous),
+                      label: const Text('Previous Chapter'),
+                    ),
+                  if (next != null)
+                    FilledButton.icon(
+                      key: const Key('completion-next-chapter'),
+                      onPressed: nextReadable ? onNext : null,
+                      icon: const Icon(Icons.skip_next),
+                      label: const Text('Next Chapter'),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

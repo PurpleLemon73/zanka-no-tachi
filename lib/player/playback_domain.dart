@@ -2,6 +2,7 @@ import '../canonical/domain/bindings.dart';
 import '../canonical/domain/identifiers.dart';
 import '../canonical/domain/installments.dart';
 import '../canonical/domain/user_state.dart';
+import 'video_display_mode.dart';
 
 enum PlaybackSourceCapability {
   metadataOnly,
@@ -42,6 +43,7 @@ class PlaybackPreferences {
     this.speed = 1,
     this.preferredAudioLanguage,
     this.preferredSubtitleLanguage,
+    this.videoDisplayMode = VideoDisplayMode.automatic,
   });
   final int seekStepSeconds;
   final bool autoplay;
@@ -49,6 +51,7 @@ class PlaybackPreferences {
   final double speed;
   final String? preferredAudioLanguage;
   final String? preferredSubtitleLanguage;
+  final VideoDisplayMode videoDisplayMode;
 
   PlaybackPreferences copyWith({
     int? seekStepSeconds,
@@ -57,6 +60,7 @@ class PlaybackPreferences {
     double? speed,
     String? preferredAudioLanguage,
     String? preferredSubtitleLanguage,
+    VideoDisplayMode? videoDisplayMode,
     bool clearSubtitleLanguage = false,
   }) => PlaybackPreferences(
     seekStepSeconds: seekStepSeconds ?? this.seekStepSeconds,
@@ -68,9 +72,22 @@ class PlaybackPreferences {
     preferredSubtitleLanguage: clearSubtitleLanguage
         ? null
         : preferredSubtitleLanguage ?? this.preferredSubtitleLanguage,
+    videoDisplayMode: videoDisplayMode ?? this.videoDisplayMode,
   );
 
   Map<String, Object?> toJson() => {
+    'seekStepSeconds': seekStepSeconds,
+    'autoplay': autoplay,
+    'autoplayNext': autoplayNext,
+    'speed': speed,
+    'preferredAudioLanguage': preferredAudioLanguage,
+    'preferredSubtitleLanguage': preferredSubtitleLanguage,
+    'videoDisplayMode': videoDisplayMode.toJson(),
+  };
+
+  /// Portable playback behavior only. Display geometry is intentionally
+  /// device-local because television and handset screens are unrelated.
+  Map<String, Object?> toBackupJson() => {
     'seekStepSeconds': seekStepSeconds,
     'autoplay': autoplay,
     'autoplayNext': autoplayNext,
@@ -87,6 +104,11 @@ class PlaybackPreferences {
         speed: (json['speed'] as num).toDouble(),
         preferredAudioLanguage: json['preferredAudioLanguage'] as String?,
         preferredSubtitleLanguage: json['preferredSubtitleLanguage'] as String?,
+        videoDisplayMode: VideoDisplayMode.fromJson(
+          json['videoDisplayMode'] is Map
+              ? Map<String, dynamic>.from(json['videoDisplayMode'] as Map)
+              : null,
+        ),
       );
 }
 

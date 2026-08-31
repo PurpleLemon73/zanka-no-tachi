@@ -1,5 +1,13 @@
 # Daily-Use UX — M13
 
+## M18 navigation parity
+
+Manga Reader UI v2 adds canonical Previous/Next Chapter, completion actions,
+a lazy in-reader picker, and genuine-volume navigation while preserving the M13
+zoom/page-turn guard and exact binding resume. The player adds device-local,
+engine-neutral fit and aspect controls with Auto / Original as the non-stretching
+default. See [Manga Reader](MANGA_READER.md) and [Anime Player](ANIME_PLAYER.md).
+
 ## Smart Resume
 
 `SmartResumePolicy` is the single application policy for Home and Details. It

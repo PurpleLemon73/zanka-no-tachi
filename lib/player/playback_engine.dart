@@ -70,6 +70,7 @@ class PlaybackEngineState {
     this.subtitleTracks = const [],
     this.selectedAudioTrackId,
     this.selectedSubtitleTrackId,
+    this.intrinsicAspectRatio,
     this.error,
   });
 
@@ -83,6 +84,10 @@ class PlaybackEngineState {
   final List<PlaybackEngineTrack> subtitleTracks;
   final String? selectedAudioTrackId;
   final String? selectedSubtitleTrackId;
+
+  /// Decoder-reported video width divided by height. Presentation must not
+  /// infer this value from the screen dimensions.
+  final double? intrinsicAspectRatio;
   final PlaybackEngineFailure? error;
 
   PlaybackEngineState copyWith({
@@ -96,10 +101,12 @@ class PlaybackEngineState {
     List<PlaybackEngineTrack>? subtitleTracks,
     String? selectedAudioTrackId,
     String? selectedSubtitleTrackId,
+    double? intrinsicAspectRatio,
     PlaybackEngineFailure? error,
     bool clearError = false,
     bool clearSelectedAudioTrack = false,
     bool clearSelectedSubtitleTrack = false,
+    bool clearIntrinsicAspectRatio = false,
   }) => PlaybackEngineState(
     phase: phase ?? this.phase,
     position: position ?? this.position,
@@ -115,6 +122,9 @@ class PlaybackEngineState {
     selectedSubtitleTrackId: clearSelectedSubtitleTrack
         ? null
         : selectedSubtitleTrackId ?? this.selectedSubtitleTrackId,
+    intrinsicAspectRatio: clearIntrinsicAspectRatio
+        ? null
+        : intrinsicAspectRatio ?? this.intrinsicAspectRatio,
     error: clearError ? null : error ?? this.error,
   );
 }

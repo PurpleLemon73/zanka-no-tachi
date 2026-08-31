@@ -1,5 +1,54 @@
 # Manga Reader — M5
 
+## M18 Manga Reader UI v2
+
+The reader now treats canonical chapter order as an in-session navigation
+contract. Previous and Next Chapter are disabled only at real canonical
+boundaries; an adjacent chapter that exists but lacks a readable binding stays
+visible as an unavailable destination and leaves the current session intact.
+Manual Next—including the completion action—opens the next canonical chapter
+at page one. It never copies the old chapter's page and does not erase a saved
+page belonging to the destination binding. Previous and picker selections use
+that binding's own exact resume.
+
+Reaching the final rendered page marks the canonical chapter complete and opens
+a completion layer with Previous Chapter, a prominent Next Chapter action, or a
+truthful end-of-available-chapters message. The ordered chapter picker is a lazy
+list, marks the current and completed chapters, and shows canonical progress for
+the active in-progress chapter. It stays provider-agnostic and uses normal
+reader source preference/fallback rules.
+
+Volume controls exist only when a canonical chapter or user installment edit
+contains a non-empty volume label. Those raw labels provide headings, current
+volume, jump-to-volume and previous/next-volume actions. Ungrouped chapters
+remain ungrouped; the reader never turns presentation ranges into volumes.
+Natural volume ordering and explicit user chapter order are resolved in the
+repository before widgets receive the list.
+
+Paged LTR/RTL zoom state is reset on every chapter transition. Vertical mode,
+paged mode, pinch/pan, double tap, the page-turn guard, bounded three-page cache,
+canonical completion, and exact binding resume remain independent concerns.
+
+### M18 validation
+
+The full automated suite exercises first/middle/last boundaries, decimal and
+special labels, explicit order, genuine volumes, unreadable adjacency, manual
+Next isolation, completion/end states, a 1,002-chapter lazy picker, fresh picker
+progress, and two-pointer zoom reset across a chapter transition.
+
+On Samsung SM-S948B / Android 16, the M18 run covered vertical and paged reading,
+Previous/Next, completion Next, the picker, source switching with independent
+page resumes, and HOME/return. The final rebuilt APK reconfirmed live picker
+state by moving Chapter 1 from 4/4 to 3/4 and observing `Page 3 of 4` immediately
+in the canonical picker. The unchanged M13 pinch/pan/double-tap implementation
+retains its same-device physical evidence; M18's transition reset is covered by
+the real two-pointer widget regression because ADB cannot inject a reliable
+multi-pointer gesture on that device.
+
+The bounded Television_4K regression opened a live 15-chapter manga, retained
+truthful first/next boundaries, and showed a lazy canonical picker without
+invented volume controls. M18 does not claim a TV-specific manga-reader design.
+
 ## M13 paged zoom and continuation update
 
 Paged LTR/RTL reading now uses a per-page `InteractiveViewer` with 1×–4× pinch
@@ -70,9 +119,10 @@ be LTR or RTL. Image fit can be width or contain. Preferences are application
 owned and persist in `reader-settings.json` under application support storage;
 corrupt/missing settings safely fall back to vertical/LTR/fit-width.
 
-The screen provides a page counter, chapter label, source label, tap-to-toggle
-controls, normal close/back, source picker, reader settings, chapter picker,
-and previous/next chapter controls.
+The screen provides a page counter, edited/canonical chapter label, truthful
+volume label when one exists, source label, tap-to-toggle controls, normal
+close/back, source picker, reader settings, lazy chapter picker, completion
+actions, and boundary-aware previous/next chapter controls.
 
 ## 7. Canonical versus source-specific progress
 
@@ -89,9 +139,10 @@ page changes and reader close/lifecycle flush.
 
 Reopening the same binding resumes its saved page, clamped if that source's
 manifest became shorter. Switching to a binding with its own resume uses that
-resume. A different binding without resume always starts at page one. The UI
-states that scan page equivalence is not assumed. M5 offers no automatic or
-proportional position mapping.
+resume. A different binding without resume always starts at page one. Manual
+Next is a deliberate page-one presentation override and does not consume or
+copy a stored destination resume. The UI states that scan page equivalence is
+not assumed. There is no automatic or proportional position mapping.
 
 Media preference is considered only among reader-capable bindings for that
 chapter. An unavailable or metadata-only preferred provider is skipped rather
@@ -99,10 +150,11 @@ than treated as readable.
 
 ## 9. Canonical chapter navigation
 
-Previous, next, and picker ordering comes from canonical chapters. Numeric and
-exact decimal chapter numbers sort numerically; special chapters follow numeric
-chapters in deterministic label order. A destination with no reader-capable
-binding is explained and not silently skipped.
+Previous, next, picker, completion and volume navigation all consume the same
+repository-ordered canonical list. Explicit user order wins; genuine volume
+labels sort naturally; numeric and exact decimal chapter numbers sort
+numerically; special/raw labels remain deterministic. A destination with no
+reader-capable binding is explained and never silently skipped.
 
 ## 10. Cache and prefetch strategy
 
@@ -138,8 +190,8 @@ Continue reflects persisted canonical progress after the product state refreshes
 - CBR/RAR is unsupported.
 - Very large CBZ pages are decoded one at a time, but the archive entry decoder
   may still allocate the full uncompressed selected page.
-- Vertical progress estimates the visible page from scroll fraction because M5
-  does not add an item-position tracking dependency.
+- Vertical progress tracks the rendered page nearest the viewport center; it
+  does not infer an exact page from a global scroll fraction.
 - Spread metadata and image dimensions are available in the model but are not
   inferred from local images.
 - Exact progress survives source replacement only when the binding identity is

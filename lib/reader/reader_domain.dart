@@ -58,11 +58,16 @@ class ReaderSessionRequest {
     required this.mediaId,
     required this.chapterId,
     this.binding,
+    this.startAtBeginning = false,
   });
 
   final CanonicalMediaId mediaId;
   final CanonicalChapterId chapterId;
   final ChapterSourceBinding? binding;
+
+  /// A deliberate forward navigation starts this chapter at page one without
+  /// deleting the binding's separately persisted exact resume.
+  final bool startAtBeginning;
 }
 
 class ReaderPage {

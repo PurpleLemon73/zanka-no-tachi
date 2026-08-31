@@ -87,6 +87,9 @@ class VideoPlayerPlaybackEngine implements PlaybackEngine {
       isPlaying: value.isPlaying,
       isBuffering: value.isBuffering,
       playbackRate: value.playbackSpeed,
+      intrinsicAspectRatio: value.aspectRatio.isFinite && value.aspectRatio > 0
+          ? value.aspectRatio
+          : null,
       error: value.hasError
           ? PlaybackEngineFailure(
               message: value.errorDescription ?? 'Video decoding failed.',
@@ -102,10 +105,7 @@ class VideoPlayerPlaybackEngine implements PlaybackEngine {
     if (controller == null || !controller.value.isInitialized) {
       return const SizedBox.shrink();
     }
-    return AspectRatio(
-      aspectRatio: controller.value.aspectRatio,
-      child: VideoPlayer(controller),
-    );
+    return VideoPlayer(controller);
   }
 
   @override

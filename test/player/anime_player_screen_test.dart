@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:drift/native.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zanka_no_tachi/canonical/domain/bindings.dart';
 import 'package:zanka_no_tachi/canonical/domain/identifiers.dart';
@@ -150,6 +151,161 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();
   });
+
+  testWidgets(
+    'display geometry changes live without reopening seeking or mutating resume',
+    (tester) async {
+      final fixture = (await tester.runAsync(
+        () => _PlayerFixture.create(episodeCount: 1),
+      ))!;
+      _disposeFixtureAfterScreen(tester, fixture);
+      final engines = _EngineFactory();
+
+      await _pumpPlayer(tester, fixture, engines, _episodeOne);
+      final player = engines.created.single;
+      final initialPosition = player.state.value.position;
+      final originalFrame = tester.getSize(
+        find.byKey(const Key('video-content-frame')),
+      );
+      expect(originalFrame.aspectRatio, closeTo(4 / 3, 0.01));
+
+      _invokeIconButton(tester, 'Display mode');
+      await tester.pumpAndSettle();
+      expect(find.text('Video display mode'), findsOneWidget);
+      await tester.tap(
+        find.byKey(const ValueKey('video-fit-fillCrop')),
+        warnIfMissed: false,
+      );
+      await tester.pump();
+      await tester.scrollUntilVisible(
+        find.byKey(const ValueKey('video-aspect-twentyOneNine')),
+        240,
+        scrollable: find.byType(Scrollable).last,
+      );
+      await tester.tap(
+        find.byKey(const ValueKey('video-aspect-twentyOneNine')),
+      );
+      await tester.pump();
+
+      expect(engines.created, hasLength(1));
+      expect(player.openPositions, hasLength(1));
+      expect(player.seekPositions, isEmpty);
+      expect(player.state.value.position, initialPosition);
+      expect(await fixture.database.animeProgress(_mediaId), isNull);
+
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('custom-video-aspect-input')),
+        240,
+        scrollable: find.byType(Scrollable).last,
+      );
+      expect(
+        tester
+            .widget<TextField>(
+              find.descendant(
+                of: find.byKey(const Key('custom-video-aspect-input')),
+                matching: find.byType(TextField),
+              ),
+            )
+            .keyboardType,
+        TextInputType.text,
+      );
+      await tester.enterText(
+        find.byKey(const Key('custom-video-aspect-input')),
+        '0:1',
+      );
+      tester
+          .widget<FilledButton>(
+            find.byKey(const Key('apply-custom-video-aspect')),
+          )
+          .onPressed!();
+      await tester.pump();
+      expect(find.textContaining('Enter two positive values'), findsOneWidget);
+
+      await tester.enterText(
+        find.byKey(const Key('custom-video-aspect-input')),
+        '2.39:1',
+      );
+      tester
+          .widget<FilledButton>(
+            find.byKey(const Key('apply-custom-video-aspect')),
+          )
+          .onPressed!();
+      await tester.pump();
+      expect(player.seekPositions, isEmpty);
+      expect(player.state.value.position, initialPosition);
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.text('Video display mode'), findsNothing);
+      expect(find.byTooltip('Display mode'), findsOneWidget);
+
+      _invokeIconButton(tester, 'Display mode');
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('reset-video-display-mode')));
+      await tester.pump();
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      final resetFrame = tester.getSize(
+        find.byKey(const Key('video-content-frame')),
+      );
+      expect(resetFrame.aspectRatio, closeTo(4 / 3, 0.01));
+      final saved = (await tester.runAsync(
+        fixture.repository.preferencesStore.load,
+      ))!;
+      expect(saved.videoDisplayMode.isAutomatic, isTrue);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    },
+  );
+
+  testWidgets('TV D-pad reaches display mode and Back closes its menu first', (
+    tester,
+  ) async {
+    final fixture = (await tester.runAsync(
+      () => _PlayerFixture.create(episodeCount: 1),
+    ))!;
+    _disposeFixtureAfterScreen(tester, fixture);
+    final engines = _EngineFactory();
+
+    await _pumpPlayer(tester, fixture, engines, _episodeOne, isTv: true);
+    expect(_focusedTooltip(tester), isIn(['Play', 'Pause']));
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+    await tester.pump();
+    expect(_focusedTooltip(tester), 'Episodes');
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump();
+    expect(_focusedTooltip(tester), 'Source');
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump();
+    expect(_focusedTooltip(tester), 'Display mode');
+    await tester.sendKeyEvent(LogicalKeyboardKey.select);
+    await tester.pumpAndSettle();
+    expect(find.text('Video display mode'), findsOneWidget);
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.text('Video display mode'), findsNothing);
+    expect(find.byTooltip('Display mode'), findsOneWidget);
+    expect(engines.created, hasLength(1));
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+  });
+}
+
+String? _focusedTooltip(WidgetTester tester) {
+  final context = tester.binding.focusManager.primaryFocus?.context;
+  String? tooltip;
+  context?.visitAncestorElements((element) {
+    final widget = element.widget;
+    if (widget is Tooltip) {
+      tooltip = widget.message;
+      return false;
+    }
+    return true;
+  });
+  return tooltip;
 }
 
 Finder _iconButtonForTooltip(String tooltip) => find
@@ -181,12 +337,14 @@ Future<void> _pumpPlayer(
   WidgetTester tester,
   _PlayerFixture fixture,
   _EngineFactory engines,
-  CanonicalEpisodeId episodeId,
-) async {
+  CanonicalEpisodeId episodeId, {
+  bool isTv = false,
+}) async {
   await tester.pumpWidget(
     MaterialApp(
       home: AnimePlayerScreen(
         repository: fixture.repository,
+        isTv: isTv,
         engineRegistry: PlaybackEngineRegistry(
           productionBuilder: engines.create,
         ),
@@ -383,6 +541,7 @@ class _FakePlaybackEngine implements PlaybackEngine {
       phase: PlaybackEnginePhase.ready,
       position: startPosition,
       duration: const Duration(seconds: 100),
+      intrinsicAspectRatio: 4 / 3,
       audioTracks: audioTracks,
       subtitleTracks: subtitleTracks,
     );

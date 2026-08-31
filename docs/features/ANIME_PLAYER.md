@@ -1,5 +1,40 @@
 # Anime Player — M6
 
+## M18 video display modes
+
+Player presentation now owns a complete engine-neutral display policy. Fresh
+installs use **Auto / Original**, which waits for the decoder-reported intrinsic
+width:height ratio and never guesses from screen dimensions. Fit, Fill / Crop,
+Fit Width and Fit Height preserve the selected frame ratio; only the explicit
+Stretch / Fit Parent action may distort it. Fit policy and aspect selection are
+stored separately.
+
+Available aspect choices are Original, 4:3, 16:9, 16:10, 21:9, 1:1, 3:2 and
+5:4. A custom field accepts any finite positive `width:height` pair such as
+`2.39:1`, `18:9` or `32:9` and rejects malformed, zero and negative values.
+Changes re-layout the existing engine surface live: no engine reopen, seek,
+position write, canonical/source reconstruction or resume mutation occurs.
+Reset to Auto restores the safe default. The modal is touch and focus/D-pad
+accessible, and Back dismisses it before the player route.
+
+The production adapter reports intrinsic aspect ratio through stable
+`PlaybackEngineState`; UI code still imports no plugin controller. Display mode
+is persisted in the local player settings file but deliberately excluded from
+portable backup/restore. Restore retains the receiving device's display mode,
+so a television crop/ratio choice is never imposed on an unrelated handset.
+
+### M18 validation
+
+On Samsung SM-S948B / Android 16, the final debug APK opened the touch sheet with
+Auto / Original selected, applied Fill / Crop and 21:9 live, accepted `2.39:1`
+through the text IME, dismissed the sheet with Back before leaving playback,
+and restored Auto / Original with Reset. On Television_4K, D-pad focus moved
+from Play through Episodes and Source to Display mode, activated the sheet,
+selected Fill / Crop, and returned to the same paused `2:24 / 23:40` session.
+Reset to Auto was then confirmed selected. The widget suite independently proves
+one engine/open, no seek, unchanged position, no progress write, real overflow
+geometry, invalid-input handling, and Back-first dismissal.
+
 ## Player UI v2 (M17)
 
 The presentation now depends on `PlaybackEngine`, never a plugin controller.

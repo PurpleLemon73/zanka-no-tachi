@@ -13,10 +13,24 @@ class ReaderChapterAvailability {
     required this.chapter,
     required this.bindings,
     required this.capabilities,
+    this.edit,
   });
   final CanonicalChapter chapter;
   final List<ChapterSourceBinding> bindings;
   final Map<ProviderId, ReaderSourceCapability> capabilities;
+  final ChapterUserEdit? edit;
+  String get displayLabel {
+    final edited = edit?.rawLabel.trim();
+    return edited == null || edited.isEmpty ? chapter.number.rawLabel : edited;
+  }
+
+  String? get volumeLabel {
+    final edited = edit?.volumeLabel?.trim();
+    if (edited != null && edited.isNotEmpty) return edited;
+    final canonical = chapter.volumeLabel?.trim();
+    return canonical == null || canonical.isEmpty ? null : canonical;
+  }
+
   List<ChapterSourceBinding> get readableBindings => bindings
       .where(
         (binding) =>
@@ -63,8 +77,8 @@ class ReaderRepository {
         if (compared != 0) return compared;
       }
       final volume = compareNaturalVolumeLabels(
-        left.volumeLabel,
-        right.volumeLabel,
+        _effectiveVolume(left, edits[left.id]),
+        _effectiveVolume(right, edits[right.id]),
       );
       if (volume != 0) return volume;
       return _compareChapters(left, right);
@@ -75,6 +89,7 @@ class ReaderRepository {
         return ReaderChapterAvailability(
           chapter: chapter,
           bindings: bindings,
+          edit: edits[chapter.id],
           capabilities: {
             for (final binding in bindings)
               binding.providerId: sources.capability(binding),
@@ -130,6 +145,7 @@ class ReaderRepository {
       mediaId: mediaId,
       chapterId: chapter.id,
       binding: binding,
+      startAtBeginning: request.startAtBeginning,
     );
     ReaderManifest manifest;
     try {
@@ -152,7 +168,7 @@ class ReaderRepository {
       binding.providerId,
       binding.externalId,
     );
-    final startPage = resume == null
+    final startPage = request.startAtBeginning || resume == null
         ? 0
         : resume.pageIndex.clamp(0, manifest.pages.length - 1);
     return ReaderSession(
@@ -231,6 +247,20 @@ class ReaderRepository {
   Future<void> markUnread(CanonicalChapterId chapterId) =>
       database.setChapterUnread(chapterId);
 
+  Future<Set<CanonicalChapterId>> completedChapters(
+    CanonicalMediaId requestedId,
+  ) async {
+    final mediaId = await database.resolveCanonicalId(requestedId);
+    return (await database.chapterCompletionsFor(
+      mediaId,
+    )).map((value) => value.chapterId).toSet();
+  }
+
+  Future<CanonicalMangaProgress?> progress(CanonicalMediaId requestedId) async {
+    final mediaId = await database.resolveCanonicalId(requestedId);
+    return database.mangaProgress(mediaId);
+  }
+
   Future<void> savePreferences(ReaderPreferences value) =>
       preferencesStore.save(value);
 
@@ -245,6 +275,13 @@ class ReaderRepository {
     final next = index + direction;
     return index < 0 || next < 0 || next >= values.length ? null : values[next];
   }
+}
+
+String? _effectiveVolume(CanonicalChapter chapter, ChapterUserEdit? edit) {
+  final edited = edit?.volumeLabel?.trim();
+  if (edited != null && edited.isNotEmpty) return edited;
+  final canonical = chapter.volumeLabel?.trim();
+  return canonical == null || canonical.isEmpty ? null : canonical;
 }
 
 double _chapterOrder(CanonicalChapter value) =>

@@ -16,6 +16,7 @@ import 'package:zanka_no_tachi/reader/reader_preferences_store.dart';
 import 'package:zanka_no_tachi/reader/reader_repository.dart';
 import 'package:zanka_no_tachi/reader/reader_source.dart';
 import 'package:zanka_no_tachi/reader/sample_manga_installer.dart';
+import 'package:zanka_no_tachi/product_maturity/maturity_domain.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -208,6 +209,43 @@ void main() {
     },
   );
 
+  test(
+    'manual forward navigation starts at page one without consuming exact resume',
+    () async {
+      final resumed = await repository.open(
+        const ReaderSessionRequest(
+          mediaId: sampleMangaId,
+          chapterId: sampleChapterTwoId,
+        ),
+      );
+      await repository.savePosition(resumed, 1);
+
+      final manualNext = await repository.open(
+        const ReaderSessionRequest(
+          mediaId: sampleMangaId,
+          chapterId: sampleChapterTwoId,
+          startAtBeginning: true,
+        ),
+      );
+      expect(manualNext.startPage, 0);
+      expect(
+        (await database.mangaSourcePageResume(
+          manualNext.manifest.binding.providerId,
+          manualNext.manifest.binding.externalId,
+        ))?.pageIndex,
+        1,
+      );
+
+      final ordinaryReopen = await repository.open(
+        const ReaderSessionRequest(
+          mediaId: sampleMangaId,
+          chapterId: sampleChapterTwoId,
+        ),
+      );
+      expect(ordinaryReopen.startPage, 1);
+    },
+  );
+
   test('fresh live retry is bounded and preserves exact resume', () async {
     final original = await repository.open(
       const ReaderSessionRequest(
@@ -395,6 +433,48 @@ void main() {
       expect(
         (await repository.adjacent(chapterOne, 1))?.chapter.number.rawLabel,
         '1.5',
+      );
+    },
+  );
+
+  test(
+    'user order and genuine edited volume labels drive reader navigation',
+    () async {
+      const volumeTen = CanonicalChapterId('volume-ten-chapter');
+      const volumeTwo = CanonicalChapterId('volume-two-chapter');
+      for (final value in [
+        (volumeTen, '10', 'Volume 10'),
+        (volumeTwo, '2', 'Volume 2'),
+      ]) {
+        await database.saveChapter(
+          CanonicalChapter(
+            id: value.$1,
+            mediaId: sampleMangaId,
+            number: ChapterNumber.parse(value.$2),
+            volumeLabel: value.$3,
+          ),
+        );
+      }
+      await database.saveChapterUserEdit(
+        ChapterUserEdit(
+          chapterId: sampleChapterTwoId,
+          rawLabel: 'The edited finale',
+          kind: MangaInstallmentKind.standard,
+          volumeLabel: 'Volume 20',
+          explicitOrder: -1,
+          updatedAt: DateTime.utc(2026),
+        ),
+      );
+
+      final values = await repository.chapters(sampleMangaId);
+      expect(values.first.chapter.id, sampleChapterTwoId);
+      expect(values.first.displayLabel, 'The edited finale');
+      expect(values.first.volumeLabel, 'Volume 20');
+      expect(
+        values
+            .where((value) => {volumeTwo, volumeTen}.contains(value.chapter.id))
+            .map((value) => value.chapter.id),
+        [volumeTwo, volumeTen],
       );
     },
   );

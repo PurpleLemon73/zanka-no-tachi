@@ -11,6 +11,7 @@ import 'package:zanka_no_tachi/local_library/local_asset.dart';
 import 'package:zanka_no_tachi/local_library/local_library_service.dart';
 import 'package:zanka_no_tachi/player/playback_domain.dart';
 import 'package:zanka_no_tachi/player/playback_preferences_store.dart';
+import 'package:zanka_no_tachi/player/video_display_mode.dart';
 import 'package:zanka_no_tachi/reader/reader_domain.dart';
 import 'package:zanka_no_tachi/reader/reader_preferences_store.dart';
 
@@ -66,7 +67,13 @@ void main() {
         const ReaderPreferences(mode: ReaderMode.paged),
       );
       await sourceBackup.playerPreferences.save(
-        const PlaybackPreferences(speed: 1.5),
+        const PlaybackPreferences(
+          speed: 1.5,
+          videoDisplayMode: VideoDisplayMode(
+            fit: VideoDisplayFit.fillCrop,
+            aspectPreset: VideoAspectPreset.twentyOneNine,
+          ),
+        ),
       );
       final backup = await sourceBackup.service.exportDataOnly(
         File('${temp.path}/state.zanka-backup.zip'),
@@ -80,11 +87,30 @@ void main() {
               )
               as Map<String, dynamic>;
       expect(manifest['version'], zankaBackupVersion);
+      final state =
+          jsonDecode(
+                utf8.decode(
+                  encoded.findFile('state.json')!.content as List<int>,
+                ),
+              )
+              as Map<String, dynamic>;
+      expect(
+        state['playerPreferences'] as Map<String, dynamic>,
+        isNot(contains('videoDisplayMode')),
+      );
 
       final targetDb = CanonicalDatabase(
         NativeDatabase(File('${temp.path}/restored.sqlite')),
       );
       final targetBackup = _backup(targetDb, temp, 'target');
+      await targetBackup.playerPreferences.save(
+        const PlaybackPreferences(
+          videoDisplayMode: VideoDisplayMode(
+            fit: VideoDisplayFit.fitHeight,
+            aspectPreset: VideoAspectPreset.square,
+          ),
+        ),
+      );
       final result = await targetBackup.service.restore(backup);
       expect(result.conflicts, isEmpty);
       expect((await targetDb.media(mediaId))?.id, mediaId);
@@ -108,6 +134,12 @@ void main() {
         ReaderMode.paged,
       );
       expect((await targetBackup.playerPreferences.load()).speed, 1.5);
+      expect(
+        (await targetBackup.playerPreferences.load())
+            .videoDisplayMode
+            .aspectPreset,
+        VideoAspectPreset.square,
+      );
       await targetDb.close();
 
       final reopened = CanonicalDatabase(

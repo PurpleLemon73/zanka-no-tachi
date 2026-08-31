@@ -394,7 +394,13 @@ class ZankaBackupService {
     }
     final player = state['playerPreferences'] as Map<String, dynamic>?;
     if (player != null) {
-      await playerPreferences.save(PlaybackPreferences.fromJson(player));
+      final localDisplayMode =
+          (await playerPreferences.load()).videoDisplayMode;
+      await playerPreferences.save(
+        PlaybackPreferences.fromJson(
+          player,
+        ).copyWith(videoDisplayMode: localDisplayMode),
+      );
     }
     return RestoreResult(preview: previewValue, conflicts: conflicts);
   }
@@ -699,7 +705,7 @@ class ZankaBackupService {
               )
               .toList(),
       'readerPreferences': (await readerPreferences.load()).toJson(),
-      'playerPreferences': (await playerPreferences.load()).toJson(),
+      'playerPreferences': (await playerPreferences.load()).toBackupJson(),
     };
   }
 

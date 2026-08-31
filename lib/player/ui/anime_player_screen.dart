@@ -9,6 +9,7 @@ import '../playback_repository.dart';
 import '../playback_source.dart';
 import '../video_player_playback_engine.dart';
 import '../android_media_bridge.dart';
+import '../video_display_mode.dart';
 
 enum TvPlayerCommand { toggle, play, pause, seekBackward, seekForward, reveal }
 
@@ -294,8 +295,14 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
     final wasVisible = controlsVisible;
     setState(() => controlsVisible = true);
     if (wasVisible &&
-        (event.logicalKey == LogicalKeyboardKey.arrowLeft ||
-            event.logicalKey == LogicalKeyboardKey.arrowRight)) {
+        {
+          LogicalKeyboardKey.arrowLeft,
+          LogicalKeyboardKey.arrowRight,
+          LogicalKeyboardKey.arrowUp,
+          LogicalKeyboardKey.arrowDown,
+          LogicalKeyboardKey.select,
+          LogicalKeyboardKey.enter,
+        }.contains(event.logicalKey)) {
       _scheduleHide();
       return KeyEventResult.ignored;
     }
@@ -412,7 +419,9 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
             ),
       body: Focus(
         focusNode: remoteFocus,
-        autofocus: widget.isTv,
+        // This node observes bubbled remote keys; it must not steal primary
+        // focus from the visible TV controls.
+        canRequestFocus: false,
         onKeyEvent: _handleRemoteKey,
         child: error != null
             ? _ErrorState(
@@ -444,11 +453,12 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    Center(
-                      child: AspectRatio(
-                        aspectRatio: 16 / 9,
-                        child: engine!.buildSurface(),
-                      ),
+                    VideoDisplaySurface(
+                      key: const Key('video-display-surface'),
+                      mode: session!.preferences.videoDisplayMode,
+                      intrinsicAspectRatio:
+                          engine!.state.value.intrinsicAspectRatio,
+                      child: engine!.buildSurface(),
                     ),
                     if (engine!.state.value.isBuffering)
                       const Center(child: CircularProgressIndicator()),
@@ -470,6 +480,7 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
                           onEpisodes: _showEpisodes,
                           onAdjacent: _openAdjacent,
                           onPreferences: _showPreferences,
+                          onDisplayMode: _showDisplayMode,
                           onAudio: _showAudio,
                           onSubtitles: _showSubtitles,
                           onTogglePlayback: _togglePlayback,
@@ -718,6 +729,181 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
     }
   }
 
+  Future<void> _showDisplayMode() async {
+    final current = session;
+    if (current == null) return;
+    var mode = current.preferences.videoDisplayMode;
+    var customInput =
+        mode.aspectPreset == VideoAspectPreset.custom &&
+            mode.customAspectRatio != null
+        ? '${mode.customAspectRatio}:1'
+        : '';
+    String? customError;
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (context) => StatefulBuilder(
+        builder: (context, updateSheet) {
+          void apply(VideoDisplayMode value) {
+            mode = value;
+            updateSheet(() => customError = null);
+            _applyDisplayMode(value);
+          }
+
+          return DraggableScrollableSheet(
+            expand: false,
+            initialChildSize: 0.86,
+            minChildSize: 0.5,
+            maxChildSize: 0.95,
+            builder: (context, controller) => SafeArea(
+              child: FocusTraversalGroup(
+                child: ListView(
+                  controller: controller,
+                  padding: const EdgeInsets.only(bottom: 24),
+                  children: [
+                    ListTile(
+                      title: const Text('Video display mode'),
+                      subtitle: const Text(
+                        'Fit and aspect ratio are separate. Auto preserves the video’s original shape.',
+                      ),
+                      trailing: TextButton.icon(
+                        key: const Key('reset-video-display-mode'),
+                        autofocus: widget.isTv,
+                        onPressed: () => apply(VideoDisplayMode.automatic),
+                        icon: const Icon(Icons.restart_alt),
+                        label: const Text('Reset to Auto'),
+                      ),
+                    ),
+                    const Divider(),
+                    const ListTile(title: Text('Fit mode')),
+                    for (final value in VideoDisplayFit.values)
+                      ListTile(
+                        key: ValueKey('video-fit-${value.name}'),
+                        selected: mode.fit == value,
+                        leading: Icon(
+                          mode.fit == value
+                              ? Icons.radio_button_checked
+                              : Icons.radio_button_off,
+                        ),
+                        title: Text(videoDisplayFitLabel(value)),
+                        onTap: () => apply(mode.withFit(value)),
+                      ),
+                    const Divider(),
+                    const ListTile(title: Text('Aspect ratio')),
+                    for (final value in VideoAspectPreset.values.where(
+                      (value) => value != VideoAspectPreset.custom,
+                    ))
+                      ListTile(
+                        key: ValueKey('video-aspect-${value.name}'),
+                        selected: mode.aspectPreset == value,
+                        leading: Icon(
+                          mode.aspectPreset == value
+                              ? Icons.radio_button_checked
+                              : Icons.radio_button_off,
+                        ),
+                        title: Text(videoAspectPresetLabel(value)),
+                        onTap: () => apply(mode.withAspect(value)),
+                      ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: TextFormField(
+                              key: const Key('custom-video-aspect-input'),
+                              initialValue: customInput,
+                              // A numeric keyboard commonly omits the colon
+                              // required by width:height on Android/TV IMEs.
+                              keyboardType: TextInputType.text,
+                              textInputAction: TextInputAction.done,
+                              autocorrect: false,
+                              enableSuggestions: false,
+                              smartDashesType: SmartDashesType.disabled,
+                              smartQuotesType: SmartQuotesType.disabled,
+                              decoration: InputDecoration(
+                                labelText: 'Custom width:height',
+                                hintText: '2.39:1',
+                                errorText: customError,
+                              ),
+                              onChanged: (value) => customInput = value,
+                              onFieldSubmitted: (_) => _applyCustomVideoAspect(
+                                customInput,
+                                mode,
+                                updateSheet,
+                                (value) => mode = value,
+                                (value) => customError = value,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          FilledButton(
+                            key: const Key('apply-custom-video-aspect'),
+                            onPressed: () => _applyCustomVideoAspect(
+                              customInput,
+                              mode,
+                              updateSheet,
+                              (value) => mode = value,
+                              (value) => customError = value,
+                            ),
+                            child: const Text('Apply'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  void _applyCustomVideoAspect(
+    String input,
+    VideoDisplayMode current,
+    StateSetter updateSheet,
+    ValueChanged<VideoDisplayMode> updateMode,
+    ValueChanged<String?> updateError,
+  ) {
+    final ratio = parseVideoAspectRatio(input);
+    if (ratio == null) {
+      updateSheet(
+        () => updateError('Enter two positive values, for example 2.39:1.'),
+      );
+      return;
+    }
+    final value = current.withAspect(
+      VideoAspectPreset.custom,
+      customRatio: ratio,
+    );
+    updateSheet(() {
+      updateMode(value);
+      updateError(null);
+    });
+    _applyDisplayMode(value);
+  }
+
+  void _applyDisplayMode(VideoDisplayMode value) {
+    final current = session;
+    if (current == null) return;
+    final preferences = current.preferences.copyWith(videoDisplayMode: value);
+    setState(() {
+      session = PlaybackSession(
+        mediaId: current.mediaId,
+        episode: current.episode,
+        manifest: current.manifest,
+        startPosition: current.startPosition,
+        preferences: preferences,
+        resume: current.resume,
+      );
+    });
+    unawaited(widget.repository.savePreferences(preferences));
+  }
+
   Future<void> _showAudio() async {
     final player = engine!;
     final tracks = player.state.value.audioTracks;
@@ -804,6 +990,7 @@ class _Controls extends StatelessWidget {
     required this.onEpisodes,
     required this.onAdjacent,
     required this.onPreferences,
+    required this.onDisplayMode,
     required this.onAudio,
     required this.onSubtitles,
     required this.onTogglePlayback,
@@ -821,6 +1008,7 @@ class _Controls extends StatelessWidget {
   final Future<void> Function() onEpisodes;
   final Future<void> Function(int) onAdjacent;
   final Future<void> Function() onPreferences;
+  final Future<void> Function() onDisplayMode;
   final Future<void> Function() onAudio;
   final Future<void> Function() onSubtitles;
   final Future<void> Function() onTogglePlayback;
@@ -865,6 +1053,11 @@ class _Controls extends StatelessWidget {
                     onPressed: onSubtitles,
                     icon: const Icon(Icons.subtitles, color: Colors.white),
                   ),
+                IconButton(
+                  tooltip: 'Display mode',
+                  onPressed: onDisplayMode,
+                  icon: const Icon(Icons.aspect_ratio, color: Colors.white),
+                ),
                 IconButton(
                   tooltip: 'Settings',
                   onPressed: onPreferences,
