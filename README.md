@@ -9,7 +9,7 @@ Zanka keeps your library and progress attached to canonical media—not to a
 provider URL or provider-local ID. Read lawful local manga, play local video,
 or use compatible public sources without making the product UI provider-aware.
 
-[Download the production-signed beta](https://github.com/PurpleLemon73/zanka-no-tachi/releases/tag/v0.2.0-beta.3)
+[Download the production-signed beta](https://github.com/PurpleLemon73/zanka-no-tachi/releases/tag/v0.2.0-beta.4)
 or [build it yourself](#build-from-source). One adaptive APK selects the mobile
 or 10-foot TV experience from Android's semantic device capabilities.
 
@@ -36,9 +36,12 @@ or 10-foot TV experience from Android's semantic device capabilities.
 - Local folder/CBZ manga and local video import, repair, removal, and backup
 - Live MangaWorld reading and AnimeWorld playback when ordinary public media is
   available; per-installment capability is reported truthfully
-- Paged manga reader with zoom/pan and read/unread controls
+- Manga Reader UI v2 with Previous/Next Chapter, completion actions, a lazy
+  chapter picker, truthful volume navigation, zoom/pan, and read/unread controls
 - Player UI v2 with previous/next episode, Replay, episode picker, timeline,
   ±10-second seek, watched/autoplay, remote controls, and lifecycle resume
+- Live Video Display Mode controls with independent fit and aspect selection,
+  presets, custom ratios, and a safe Auto / Original default
 - Material 3 System/Light/Dark themes with a persisted accent color
 - Remote-first Android TV / Google TV / Fire TV shell with visible D-pad focus
 
@@ -49,11 +52,11 @@ discovery. Metadata-only sources remain metadata-only.
 ## Install
 
 The beta APK is side-loaded; it is not currently distributed through an app
-store. Download `zanka-no-tachi-v0.2.0-beta.3.apk` from Releases, verify the
+store. Download `zanka-no-tachi-v0.2.0-beta.4.apk` from Releases, verify the
 published SHA-256 checksum, then install it:
 
 ```bash
-adb install zanka-no-tachi-v0.2.0-beta.3.apk
+adb install zanka-no-tachi-v0.2.0-beta.4.apk
 ```
 
 On a phone or tablet, open Zanka from the launcher and follow onboarding. On
@@ -104,7 +107,7 @@ paths.
 
 ## Beta status
 
-`v0.2.0-beta.3` is an Android public beta. Beta.2 and beta.3 share Zanka's
+`v0.2.0-beta.4` is an Android public beta. Beta.2 through beta.4 share Zanka's
 permanent production signer and update normally. Beta.1 users must first export
 a backup, uninstall the debug-signed beta.1, install the current beta, and
 restore. Expect provider markup/delivery to change, occasional unsupported live

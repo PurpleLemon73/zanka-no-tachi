@@ -4,6 +4,20 @@ This project follows Semantic Versioning.
 
 ## [Unreleased]
 
+## [0.2.0-beta.4] - 2026-09-02
+
+- Added Manga Reader UI v2 with Previous/Next Chapter, a prominent completion
+  action, and a bounded lazy canonical chapter picker.
+- Added truthful volume-aware navigation without inventing missing volume
+  metadata.
+- Preserved canonical completion and exact source-specific page resume; manual
+  Next starts at page one without overwriting the destination resume.
+- Added engine-neutral Video Display Mode controls with independent fit and
+  aspect-ratio selection, arbitrary positive custom ratios, and Auto / Original
+  as the non-stretching default.
+- Verified normal in-place Android upgrade continuity from beta.3 with Zanka's
+  permanent production signing identity.
+
 ## [0.2.0-beta.3] - 2026-08-31
 
 - Added Player UI v2 with Previous/Next Episode, Replay, completion actions,
