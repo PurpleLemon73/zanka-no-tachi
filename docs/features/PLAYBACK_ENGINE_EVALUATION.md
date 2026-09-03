@@ -1,4 +1,141 @@
-# M16 Playback Engine Evaluation
+# Playback Engine Evaluation
+
+## M19-A Better Player compatibility baseline
+
+**Checkpoint result: passed for dependency and Android build coexistence only.**
+The original `jhomlala/betterplayer` package is pinned as
+`better_player: 1.2.0`, including the exact hosted-package hashes in
+`pubspec.lock`. This is not `better_player_plus` or another fork. Its required
+Dart floor moved the application constraint from `^3.9.2` to `^3.12.0`; the
+existing Flutter 3.47.2 / Dart 3.13.2 installation satisfies its Flutter
+`>=3.47.0` floor.
+
+M19-A adds no Better Player adapter, selector, fixture, or product code. The
+production engine and Automatic selection remain `video_player`; Better Player
+cannot yet be selected or instantiated by Zanka. Runtime playback and physical
+device approval are deliberately deferred to the full M19 integration.
+
+### Dependency and toolchain evidence
+
+- Pub resolves `better_player`, `better_player_android`, `better_player_ios`,
+  and `better_player_platform_interface` at exactly 1.2.0. The Android bridge
+  resolves `jni` 1.0.3, `jni_flutter` 1.0.3, and `jni_util` 1.0.0.
+- The complete Pub graph and Gradle `releaseRuntimeClasspath` were inspected.
+  Better Player declares Media3 1.1.1, `androidx.media:media` 1.6.0,
+  Lifecycle 2.4.0-beta01, annotation 1.2.0, and WorkManager 2.7.0.
+- App conflict resolution selects Media3 1.9.2 throughout the packaged runtime,
+  alongside `video_player_android` 2.12.1. It also selects media 1.7.0,
+  Lifecycle 2.10.0, and annotation 1.10.0; WorkManager remains 2.7.0. Nothing
+  forces Media3 down to 1.1.1.
+- Better Player's module compile classpath remains Media3 1.1.1 while the final
+  app runtime is 1.9.2. Debug D8 and release R8 both accept that boundary, but
+  real source playback is still a mandatory M19 compatibility test.
+- Better Player compiles Java and Kotlin to JVM 21. Local builds used Android
+  Studio's JBR 25.0.2, which supports that target; CI now pins Temurin JDK 21
+  explicitly. Zanka's Android project, compile/target SDK 36, minimum SDK 24,
+  Gradle 9.3.1, AGP 9.1.0, Kotlin 2.4.0, and M14 native code were preserved.
+
+### Build, registration, and package footprint
+
+Both compatibility artifacts built successfully without integrating the
+adapter:
+
+| Artifact | Result | Bytes | Change from beta.4 | SHA-256 |
+| --- | --- | ---: | ---: | --- |
+| Debug APK | Pass | 197,366,024 | +39,134,756 (+24.73%) | `be0891fd98e5139bcfed29dd09780409d01dfde426e00f81726d69d229310681` |
+| Signed release APK | Pass, including R8 | 92,747,514 | +669,934 (+0.73%) | `748a577e3888c6228102e0dd14095873684ba885755e9652c37acf4ad997a929` |
+
+The release APK retains the permanent Zanka signer certificate whose SHA-256
+is `3F:4A:86:F7:F4:DD:A3:98:E0:4D:D0:59:DD:33:D7:FC:27:4C:AC:B3:62:17:A4:68:B6:D8:D7:C7:07:4C:13:41`.
+R8 produced its release mapping and packaged the Better/JNI classes without a
+missing-class or shrinker failure.
+
+Generated Android registration adds `BetterPlayerPlugin`, `JniPlugin`, and
+`JniFlutterPlugin`; the Dart registrant selects `BetterPlayerAndroid`. JNI also
+adds its generated FFI entry to Linux and Windows plugin CMake files, although
+M19-A validates Android only. Better Player's AAR is JVM-only. The sole new
+native library in the release APK is `libdartjni.so`:
+
+| APK ABI | Uncompressed bytes |
+| --- | ---: |
+| arm64-v8a | 131,432 |
+| armeabi-v7a | 81,628 |
+| x86_64 | 116,824 |
+
+Media3/AndroidX contribute no new `.so` codec runtime. No FFmpeg/libav, mpv, or
+VLC binary is present. WorkManager's transitive manifest merge adds
+`FOREGROUND_SERVICE` and `RECEIVE_BOOT_COMPLETED`, its initializer, services,
+and receivers. Better Player itself does not schedule that work unless its
+cache/pre-cache paths are used; this packaged background surface must still be
+reviewed during the full adapter integration.
+
+### Lifecycle and single-owner preflight
+
+The resolved 1.2.0 implementation permits the future adapter to keep Zanka in
+control:
+
+- `PlayerControlsConfiguration(showControls: false,
+  showControlsOnInitialize: false)` suppresses stock controls;
+- `handleLifecycle: false`, `autoDispose: false`, and final
+  `dispose(forceDispose: true)` let Zanka own lifecycle and teardown;
+- every source can use `NotificationConfiguration(showNotification: false)`;
+  Better's Android MediaSession is created only by its notification path;
+- `enablePip: false` keeps its controls from entering PiP, and Zanka will not
+  call the still-available programmatic PiP API;
+- explicit `setMixWithOthers(true)` maps to Media3 audio-focus handling being
+  disabled, leaving the existing M14 bridge as the only MediaSession and audio
+  focus owner.
+
+The future adapter must enforce one active controller, because the native event
+bridge broadcasts callbacks across active Better controllers. It must also
+verify notification teardown, HOME/return behavior, exact resume, and the
+rendered subtitle layer on real devices before any production approval.
+
+### Resolved license inventory
+
+The resolved Pub closure was audited beyond Better Player's top-level license:
+
+- Apache-2.0: the four Better Player 1.2.0 packages, `clock` 1.1.2, and
+  `material_color_utilities` 0.13.0;
+- BSD-3-Clause: `args` 2.7.0, `async` 2.13.1, `code_assets` 2.0.0,
+  `collection` 1.19.1, `crypto` 3.0.7, `csslib` 1.0.2, `cupertino_ui` 1.0.2,
+  `ffi` 2.2.0, `ffi_leak_tracker` 0.1.2, `hooks` 2.2.0, `http` 1.6.0,
+  `http_parser` 4.1.2, `intl` 0.20.3, the three JNI packages listed above,
+  `logging` 1.3.0, `material_ui` 1.1.1, `meta` 1.19.0, `objective_c` 9.6.0,
+  `package_config` 2.2.0, `package_info_plus` 10.2.1 and its interface 4.1.0,
+  `path` 1.9.1, `path_provider` 2.1.6, `path_provider_android` 2.2.23,
+  `path_provider_foundation` 2.5.1, `path_provider_linux` 2.2.1,
+  `path_provider_platform_interface` 2.1.2, `path_provider_windows` 2.3.0,
+  `platform` 3.1.6,
+  `plugin_platform_interface` 2.1.8, `pub_semver` 2.2.0, `record_use` 1.1.1,
+  `source_span` 1.10.2, `string_scanner` 1.4.1, `term_glyph` 1.2.2,
+  `typed_data` 1.4.0, `vector_math` 2.4.2, `visibility_detector` 0.4.0+2,
+  `wakelock_plus` 1.8.0 and its interface 1.7.0, `web` 1.1.1, `win32` 6.4.0,
+  and `xdg_directories` 1.1.0;
+- MIT: `cupertino_icons` 1.0.9, `flutter_widget_from_html_core` 0.17.3,
+  `html` 0.15.6, `petitparser` 7.0.2, `xml` 7.0.1, and `yaml` 3.1.3;
+- MPL-2.0: `dbus` 0.7.15, reached through `wakelock_plus`. This is file-level
+  weak copyleft, not an LGPL/GPL codec runtime.
+
+AndroidX and Media3 Maven artifacts inspected in the release graph are
+Apache-2.0. `libdartjni.so` combines BSD-3-Clause JNI sources with an
+Apache-2.0 AOSP wrapper. No GPL, LGPL, AGPL, or bundled non-free media runtime
+was found. Two Better sources retain Chromium-style BSD headers not reproduced
+by the package-level Apache file, so a future distribution notice must include
+the applicable BSD attribution. APK notices also do not enumerate individual
+AndroidX/Media3 Maven coordinates; M19 must produce a complete third-party
+notice/SBOM before approval. Device-provided Widevine can be requested by
+Better's optional DRM API, but it is not bundled and Zanka will not configure
+protected-content playback.
+
+The `flutter`, `flutter_localizations`, and `flutter_web_plugins` SDK packages
+are governed by the Flutter SDK distribution rather than Pub-cache package
+licenses.
+
+The iOS package references Hyperoslo Cache 6.x (MIT), but this repository does
+not currently lock its exact native version. That and the newly generated
+Linux/Windows JNI entries are supported-platform risks outside this Android
+checkpoint and must be resolved before calling the optional engine portable.
 
 ## M17 production decision
 
