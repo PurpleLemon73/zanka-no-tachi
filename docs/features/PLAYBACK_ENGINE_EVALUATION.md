@@ -4,22 +4,38 @@
 
 **Checkpoint result: passed for dependency and Android build coexistence only.**
 The original `jhomlala/betterplayer` package is pinned as
-`better_player: 1.2.0`, including the exact hosted-package hashes in
-`pubspec.lock`. This is not `better_player_plus` or another fork. Its required
-Dart floor moved the application constraint from `^3.9.2` to `^3.12.0`; the
-existing Flutter 3.47.2 / Dart 3.13.2 installation satisfies its Flutter
-`>=3.47.0` floor.
+`better_player: 1.3.0` (hosted-package SHA-256
+`002e84c20f8233af1108b1f8ad7bdade0d4dc5129363d2b85d9a1fa40059182d`)
+in `pubspec.lock`. This is not `better_player_plus` or another fork. Its
+required Dart floor remains `^3.12.0`; the existing Flutter 3.47.2 / Dart
+3.13.2 installation satisfies its Flutter `>=3.47.0` floor.
 
-M19-A adds no Better Player adapter, selector, fixture, or product code. The
-production engine and Automatic selection remain `video_player`; Better Player
-cannot yet be selected or instantiated by Zanka. Runtime playback and physical
-device approval are deliberately deferred to the full M19 integration.
+The initial 1.2.0 baseline could build only while the aggregate Dart library
+was unused. A subsequent real import exposed upstream references to the missing
+`BetterPlayerUtils` class in 12 Dart files. Version 1.3.0 removes every
+executable `BetterPlayerUtils` reference and routes those calls through its new
+`PlayerLogger`. The retained focused test
+(`test/player/better_player_compatibility_test.dart`) imports the public package,
+constructs and disposes `BetterPlayerController`, and invokes
+`BetterPlayerUiUtils`; both focused analysis and execution pass, so this
+compatibility gate cannot be satisfied through application tree shaking.
+
+M19-A adds no Better Player adapter, selector, fixture, or product code beyond
+that compile regression. The production engine and Automatic selection remain
+`video_player`; Better Player cannot yet be selected by Zanka. Runtime playback
+and physical device approval are deliberately deferred to the full M19
+integration.
 
 ### Dependency and toolchain evidence
 
-- Pub resolves `better_player`, `better_player_android`, `better_player_ios`,
-  and `better_player_platform_interface` at exactly 1.2.0. The Android bridge
-  resolves `jni` 1.0.3, `jni_flutter` 1.0.3, and `jni_util` 1.0.0.
+- Pub resolves the aggregate `better_player` package at exactly 1.3.0. Its
+  `better_player_android`, `better_player_ios`, and
+  `better_player_platform_interface` packages remain exactly 1.2.0 with the
+  same hashes as the earlier baseline. The Android bridge resolves `jni` 1.0.3,
+  `jni_flutter` 1.0.3, and `jni_util` 1.0.0.
+- The lockfile delta from 1.2.0 is only the aggregate package version and hash;
+  the SDK floors and all transitive versions are unchanged. The aggregate has
+  no Android project or bundled native artifacts.
 - The complete Pub graph and Gradle `releaseRuntimeClasspath` were inspected.
   Better Player declares Media3 1.1.1, `androidx.media:media` 1.6.0,
   Lifecycle 2.4.0-beta01, annotation 1.2.0, and WorkManager 2.7.0.
@@ -38,7 +54,10 @@ device approval are deliberately deferred to the full M19 integration.
 ### Build, registration, and package footprint
 
 Both compatibility artifacts built successfully without integrating the
-adapter:
+adapter. They are byte-identical to the 1.2.0 compatibility artifacts because
+the application does not yet reference the aggregate library and the native
+subpackages are unchanged; the focused test above is the independent Dart
+compile gate:
 
 | Artifact | Result | Bytes | Change from beta.4 | SHA-256 |
 | --- | --- | ---: | ---: | --- |
@@ -48,7 +67,8 @@ adapter:
 The release APK retains the permanent Zanka signer certificate whose SHA-256
 is `3F:4A:86:F7:F4:DD:A3:98:E0:4D:D0:59:DD:33:D7:FC:27:4C:AC:B3:62:17:A4:68:B6:D8:D7:C7:07:4C:13:41`.
 R8 produced its release mapping and packaged the Better/JNI classes without a
-missing-class or shrinker failure.
+missing-class or shrinker failure. `flutter pub get`, focused `dart analyze`,
+the focused Flutter test, debug D8, and signed release/R8 all passed.
 
 Generated Android registration adds `BetterPlayerPlugin`, `JniPlugin`, and
 `JniFlutterPlugin`; the Dart registrant selects `BetterPlayerAndroid`. JNI also
@@ -69,10 +89,16 @@ and receivers. Better Player itself does not schedule that work unless its
 cache/pre-cache paths are used; this packaged background surface must still be
 reviewed during the full adapter integration.
 
+The 1.3.0 aggregate itself adds five pure-Dart logging files but no plugin,
+manifest, JNI, ABI, Maven, or packaged `.so` change. Its default release log
+level is INFO and controller setup can log the full data-source URL. The future
+adapter must configure `PlayerLoggerConfiguration` with logging disabled so
+ephemeral media locators never enter logs.
+
 ### Lifecycle and single-owner preflight
 
-The resolved 1.2.0 implementation permits the future adapter to keep Zanka in
-control:
+The resolved 1.3.0 aggregate over the 1.2.0 platform bridge permits the future
+adapter to keep Zanka in control:
 
 - `PlayerControlsConfiguration(showControls: false,
   showControlsOnInitialize: false)` suppresses stock controls;
@@ -95,8 +121,8 @@ rendered subtitle layer on real devices before any production approval.
 
 The resolved Pub closure was audited beyond Better Player's top-level license:
 
-- Apache-2.0: the four Better Player 1.2.0 packages, `clock` 1.1.2, and
-  `material_color_utilities` 0.13.0;
+- Apache-2.0: aggregate Better Player 1.3.0, its three Better Player 1.2.0
+  platform packages, `clock` 1.1.2, and `material_color_utilities` 0.13.0;
 - BSD-3-Clause: `args` 2.7.0, `async` 2.13.1, `code_assets` 2.0.0,
   `collection` 1.19.1, `crypto` 3.0.7, `csslib` 1.0.2, `cupertino_ui` 1.0.2,
   `ffi` 2.2.0, `ffi_leak_tracker` 0.1.2, `hooks` 2.2.0, `http` 1.6.0,
