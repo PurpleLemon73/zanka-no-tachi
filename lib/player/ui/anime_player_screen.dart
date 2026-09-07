@@ -3,11 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../canonical/domain/bindings.dart';
+import '../default_playback_engine_registry.dart';
 import '../playback_domain.dart';
 import '../playback_engine.dart';
 import '../playback_repository.dart';
 import '../playback_source.dart';
-import '../video_player_playback_engine.dart';
 import '../android_media_bridge.dart';
 import '../video_display_mode.dart';
 
@@ -103,12 +103,11 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
     PlaybackEngine? player;
     try {
       opened = await widget.repository.open(widget.request);
-      final registry =
-          widget.engineRegistry ??
-          PlaybackEngineRegistry(
-            productionBuilder: VideoPlayerPlaybackEngine.new,
-          );
-      player = registry.create().engine;
+      final registry = widget.engineRegistry ?? defaultPlaybackEngineRegistry();
+      final engineSelection = registry.create(
+        opened.preferences.enginePreference,
+      );
+      player = engineSelection.engine;
       await player.open(opened.manifest, startPosition: opened.startPosition);
       await player.setPlaybackRate(opened.preferences.speed);
       player.state.addListener(_engineChanged);
@@ -132,6 +131,20 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
         session = opened;
         engine = player;
       });
+      final fallbackReason = engineSelection.fallbackReason;
+      if (fallbackReason != null) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(fallbackReason)));
+      } else if (player.kind == PlaybackEngineKind.betterPlayerExperimental) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Using Better Player (Experimental) for this session.',
+            ),
+          ),
+        );
+      }
       if (showRecovered) {
         final observer = widget.repository.sources.resolver(
           opened.manifest.binding.providerId,

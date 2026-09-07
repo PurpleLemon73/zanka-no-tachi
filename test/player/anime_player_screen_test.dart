@@ -292,6 +292,88 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();
   });
+
+  testWidgets(
+    'experimental preference selects Better for this session and changes next session only',
+    (tester) async {
+      final fixture = (await tester.runAsync(
+        () => _PlayerFixture.create(episodeCount: 1),
+      ))!;
+      _disposeFixtureAfterScreen(tester, fixture);
+      await tester.runAsync(
+        () => fixture.repository.savePreferences(
+          const PlaybackPreferences(
+            enginePreference: PlaybackEnginePreference.betterPlayerExperimental,
+          ),
+        ),
+      );
+      expect(
+        (await tester.runAsync(
+          fixture.repository.preferencesStore.load,
+        ))!.enginePreference,
+        PlaybackEnginePreference.betterPlayerExperimental,
+      );
+      final production = _EngineFactory();
+      final better = _EngineFactory(
+        kind: PlaybackEngineKind.betterPlayerExperimental,
+      );
+      final registry = PlaybackEngineRegistry(
+        productionBuilder: production.create,
+        betterPlayerExperimentalBuilder: better.create,
+      );
+
+      await _pumpPlayer(
+        tester,
+        fixture,
+        better,
+        _episodeOne,
+        engineRegistry: registry,
+      );
+      expect(production.created, isEmpty);
+      expect(better.created, hasLength(1));
+      expect(
+        find.text('Using Better Player (Experimental) for this session.'),
+        findsOneWidget,
+      );
+      expect(find.byTooltip('Audio'), findsNothing);
+      expect(find.byTooltip('Subtitles'), findsNothing);
+
+      await tester.runAsync(
+        () => fixture.repository.savePreferences(
+          const PlaybackPreferences(
+            enginePreference: PlaybackEnginePreference.videoPlayer,
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(better.created, hasLength(1));
+      expect(production.created, isEmpty);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 50)),
+      );
+      expect(
+        (await tester.runAsync(
+          fixture.repository.preferencesStore.load,
+        ))!.enginePreference,
+        PlaybackEnginePreference.videoPlayer,
+      );
+      await _pumpPlayer(
+        tester,
+        fixture,
+        production,
+        _episodeOne,
+        engineRegistry: registry,
+      );
+      expect(production.created, hasLength(1));
+      expect(better.created, hasLength(1));
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    },
+  );
 }
 
 String? _focusedTooltip(WidgetTester tester) {
@@ -339,15 +421,16 @@ Future<void> _pumpPlayer(
   _EngineFactory engines,
   CanonicalEpisodeId episodeId, {
   bool isTv = false,
+  PlaybackEngineRegistry? engineRegistry,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
       home: AnimePlayerScreen(
         repository: fixture.repository,
         isTv: isTv,
-        engineRegistry: PlaybackEngineRegistry(
-          productionBuilder: engines.create,
-        ),
+        engineRegistry:
+            engineRegistry ??
+            PlaybackEngineRegistry(productionBuilder: engines.create),
         request: PlaybackSessionRequest(
           mediaId: _mediaId,
           episodeId: episodeId,
@@ -377,7 +460,10 @@ Future<void> _pumpUntilReady(
   await tester.runAsync(
     () => Future<void>.delayed(const Duration(milliseconds: 20)),
   );
-  for (var index = 0; index < 20 && engines.created.length < count; index++) {
+  for (var index = 0; index < 40 && engines.created.length < count; index++) {
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 10)),
+    );
     await tester.pump(const Duration(milliseconds: 25));
   }
   expect(engines.created, hasLength(count));
@@ -475,6 +561,7 @@ class _Resolver implements PlaybackSourceResolver {
 
 class _EngineFactory {
   _EngineFactory({
+    this.kind = PlaybackEngineKind.videoPlayer,
     this.capabilities = const PlaybackCapabilities(
       canSeek: true,
       canSetPlaybackRate: true,
@@ -483,6 +570,7 @@ class _EngineFactory {
     this.subtitleTracks = const [],
   });
 
+  final PlaybackEngineKind kind;
   final PlaybackCapabilities capabilities;
   final List<PlaybackEngineTrack> audioTracks;
   final List<PlaybackEngineTrack> subtitleTracks;
@@ -490,6 +578,7 @@ class _EngineFactory {
 
   PlaybackEngine create() {
     final engine = _FakePlaybackEngine(
+      kind: kind,
       capabilities: capabilities,
       audioTracks: audioTracks,
       subtitleTracks: subtitleTracks,
@@ -501,11 +590,14 @@ class _EngineFactory {
 
 class _FakePlaybackEngine implements PlaybackEngine {
   _FakePlaybackEngine({
+    required this.kind,
     required this.capabilities,
     required this.audioTracks,
     required this.subtitleTracks,
   });
 
+  @override
+  final PlaybackEngineKind kind;
   @override
   final PlaybackCapabilities capabilities;
   final List<PlaybackEngineTrack> audioTracks;
@@ -520,8 +612,6 @@ class _FakePlaybackEngine implements PlaybackEngine {
   String? selectedAudio;
   String? selectedSubtitle;
 
-  @override
-  PlaybackEngineKind get kind => PlaybackEngineKind.videoPlayer;
   @override
   String get diagnosticName => 'test engine';
   @override

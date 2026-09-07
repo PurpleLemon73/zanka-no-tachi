@@ -17,6 +17,8 @@ const sampleChapterOneId = CanonicalChapterId('local-sample-chapter-1');
 const sampleChapterTwoId = CanonicalChapterId('local-sample-chapter-2');
 
 class SampleMangaInstaller {
+  // Keep the public `root:` label; the backing field is intentionally private.
+  // ignore: prefer_initializing_formals
   SampleMangaInstaller(this.database, {Directory? root}) : _root = root;
   final CanonicalDatabase database;
   final Directory? _root;

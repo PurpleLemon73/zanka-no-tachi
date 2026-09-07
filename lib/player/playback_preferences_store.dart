@@ -6,6 +6,8 @@ import 'package:path_provider/path_provider.dart';
 import 'playback_domain.dart';
 
 class PlaybackPreferencesStore {
+  // Keep the public `file:` label; the backing field is intentionally private.
+  // ignore: prefer_initializing_formals
   PlaybackPreferencesStore({File? file}) : _file = file;
   final File? _file;
 

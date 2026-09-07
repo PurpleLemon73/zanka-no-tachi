@@ -394,12 +394,12 @@ class ZankaBackupService {
     }
     final player = state['playerPreferences'] as Map<String, dynamic>?;
     if (player != null) {
-      final localDisplayMode =
-          (await playerPreferences.load()).videoDisplayMode;
+      final localPreferences = await playerPreferences.load();
       await playerPreferences.save(
-        PlaybackPreferences.fromJson(
-          player,
-        ).copyWith(videoDisplayMode: localDisplayMode),
+        PlaybackPreferences.fromJson(player).copyWith(
+          videoDisplayMode: localPreferences.videoDisplayMode,
+          enginePreference: localPreferences.enginePreference,
+        ),
       );
     }
     return RestoreResult(preview: previewValue, conflicts: conflicts);

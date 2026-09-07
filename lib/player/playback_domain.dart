@@ -2,6 +2,7 @@ import '../canonical/domain/bindings.dart';
 import '../canonical/domain/identifiers.dart';
 import '../canonical/domain/installments.dart';
 import '../canonical/domain/user_state.dart';
+import 'playback_engine_preference.dart';
 import 'video_display_mode.dart';
 
 enum PlaybackSourceCapability {
@@ -44,6 +45,7 @@ class PlaybackPreferences {
     this.preferredAudioLanguage,
     this.preferredSubtitleLanguage,
     this.videoDisplayMode = VideoDisplayMode.automatic,
+    this.enginePreference = PlaybackEnginePreference.automatic,
   });
   final int seekStepSeconds;
   final bool autoplay;
@@ -52,6 +54,7 @@ class PlaybackPreferences {
   final String? preferredAudioLanguage;
   final String? preferredSubtitleLanguage;
   final VideoDisplayMode videoDisplayMode;
+  final PlaybackEnginePreference enginePreference;
 
   PlaybackPreferences copyWith({
     int? seekStepSeconds,
@@ -61,6 +64,7 @@ class PlaybackPreferences {
     String? preferredAudioLanguage,
     String? preferredSubtitleLanguage,
     VideoDisplayMode? videoDisplayMode,
+    PlaybackEnginePreference? enginePreference,
     bool clearSubtitleLanguage = false,
   }) => PlaybackPreferences(
     seekStepSeconds: seekStepSeconds ?? this.seekStepSeconds,
@@ -73,6 +77,7 @@ class PlaybackPreferences {
         ? null
         : preferredSubtitleLanguage ?? this.preferredSubtitleLanguage,
     videoDisplayMode: videoDisplayMode ?? this.videoDisplayMode,
+    enginePreference: enginePreference ?? this.enginePreference,
   );
 
   Map<String, Object?> toJson() => {
@@ -83,10 +88,12 @@ class PlaybackPreferences {
     'preferredAudioLanguage': preferredAudioLanguage,
     'preferredSubtitleLanguage': preferredSubtitleLanguage,
     'videoDisplayMode': videoDisplayMode.toJson(),
+    'enginePreference': enginePreference.name,
   };
 
-  /// Portable playback behavior only. Display geometry is intentionally
-  /// device-local because television and handset screens are unrelated.
+  /// Portable playback behavior only. Display geometry and engine selection
+  /// stay device-local because devices can have different screens and engine
+  /// availability.
   Map<String, Object?> toBackupJson() => {
     'seekStepSeconds': seekStepSeconds,
     'autoplay': autoplay,
@@ -108,6 +115,9 @@ class PlaybackPreferences {
           json['videoDisplayMode'] is Map
               ? Map<String, dynamic>.from(json['videoDisplayMode'] as Map)
               : null,
+        ),
+        enginePreference: PlaybackEnginePreference.parse(
+          json['enginePreference'],
         ),
       );
 }

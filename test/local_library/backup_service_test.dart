@@ -10,6 +10,7 @@ import 'package:zanka_no_tachi/local_library/backup_service.dart';
 import 'package:zanka_no_tachi/local_library/local_asset.dart';
 import 'package:zanka_no_tachi/local_library/local_library_service.dart';
 import 'package:zanka_no_tachi/player/playback_domain.dart';
+import 'package:zanka_no_tachi/player/playback_engine.dart';
 import 'package:zanka_no_tachi/player/playback_preferences_store.dart';
 import 'package:zanka_no_tachi/player/video_display_mode.dart';
 import 'package:zanka_no_tachi/reader/reader_domain.dart';
@@ -69,6 +70,7 @@ void main() {
       await sourceBackup.playerPreferences.save(
         const PlaybackPreferences(
           speed: 1.5,
+          enginePreference: PlaybackEnginePreference.betterPlayerExperimental,
           videoDisplayMode: VideoDisplayMode(
             fit: VideoDisplayFit.fillCrop,
             aspectPreset: VideoAspectPreset.twentyOneNine,
@@ -98,6 +100,10 @@ void main() {
         state['playerPreferences'] as Map<String, dynamic>,
         isNot(contains('videoDisplayMode')),
       );
+      expect(
+        state['playerPreferences'] as Map<String, dynamic>,
+        isNot(contains('enginePreference')),
+      );
 
       final targetDb = CanonicalDatabase(
         NativeDatabase(File('${temp.path}/restored.sqlite')),
@@ -105,6 +111,7 @@ void main() {
       final targetBackup = _backup(targetDb, temp, 'target');
       await targetBackup.playerPreferences.save(
         const PlaybackPreferences(
+          enginePreference: PlaybackEnginePreference.videoPlayer,
           videoDisplayMode: VideoDisplayMode(
             fit: VideoDisplayFit.fitHeight,
             aspectPreset: VideoAspectPreset.square,
@@ -139,6 +146,10 @@ void main() {
             .videoDisplayMode
             .aspectPreset,
         VideoAspectPreset.square,
+      );
+      expect(
+        (await targetBackup.playerPreferences.load()).enginePreference,
+        PlaybackEnginePreference.videoPlayer,
       );
       await targetDb.close();
 

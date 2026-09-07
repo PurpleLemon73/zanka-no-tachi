@@ -8,6 +8,7 @@ import 'package:zanka_no_tachi/canonical/domain/installments.dart';
 import 'package:zanka_no_tachi/canonical/domain/media.dart';
 import 'package:zanka_no_tachi/canonical/persistence/canonical_database.dart';
 import 'package:zanka_no_tachi/player/playback_domain.dart';
+import 'package:zanka_no_tachi/player/playback_engine.dart';
 import 'package:zanka_no_tachi/player/local_playback_source.dart';
 import 'package:zanka_no_tachi/player/playback_preferences_store.dart';
 import 'package:zanka_no_tachi/player/playback_repository.dart';
@@ -302,6 +303,41 @@ void main() {
     expect(reopened.preferences.autoplay, isFalse);
     expect(reopened.preferences.speed, 1.5);
     expect(reopened.preferences.preferredSubtitleLanguage, 'it');
+  });
+
+  test('engine preference does not mutate canonical or resume state', () async {
+    final mediaBefore = await database.media(mediaId);
+    final bindingsBefore = await database.episodeBindingsFor(episodeId);
+
+    await repository.savePreferences(
+      const PlaybackPreferences(
+        enginePreference: PlaybackEnginePreference.betterPlayerExperimental,
+      ),
+    );
+
+    final reopened = await repository.open(
+      const PlaybackSessionRequest(mediaId: mediaId, episodeId: episodeId),
+    );
+    expect(
+      reopened.preferences.enginePreference,
+      PlaybackEnginePreference.betterPlayerExperimental,
+    );
+    expect((await database.media(mediaId))?.id, mediaBefore?.id);
+    expect(
+      (await database.media(mediaId))?.title.value,
+      mediaBefore?.title.value,
+    );
+    expect(
+      (await database.episodeBindingsFor(
+        episodeId,
+      )).map((binding) => binding.externalId),
+      bindingsBefore.map((binding) => binding.externalId),
+    );
+    expect(await database.animeProgress(mediaId), isNull);
+    expect(await database.animeSourcePlaybackResume(sourceA, 'a-1'), isNull);
+    expect(await database.animeSourcePlaybackResume(sourceB, 'b-1'), isNull);
+    expect(await database.episodeCompletionsFor(mediaId), isEmpty);
+    expect(await database.preferredProvider(mediaId), isNull);
   });
 
   test('local resolver reports a missing file as a typed failure', () async {

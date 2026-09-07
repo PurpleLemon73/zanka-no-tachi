@@ -1,5 +1,149 @@
 # Playback Engine Evaluation
 
+## M19-B experimental adapter and selector
+
+M19-B integrates the original `better_player: 1.3.0` package as an optional
+Android-only adapter for controlled basic-MP4 comparison. It does not replace
+the production adapter: **Automatic** and explicit **video_player** both create
+`VideoPlayerPlaybackEngine`. **Better Player (Experimental)** must be selected
+explicitly under Settings → Developer; if that adapter is unavailable on the
+current platform/build, the registry creates `video_player` and reports the
+fallback. A changed selection applies when the next player session is created,
+never by replacing an active decoder.
+
+The preference is part of device-local playback settings. It is deliberately
+omitted from portable backup serialization, and restore preserves the receiving
+device's existing engine choice. Choosing an engine cannot change canonical
+progress, watched state, exact binding-specific resume, source preference, or
+Video Display Mode.
+
+### Basic-MP4 boundary
+
+`BetterPlayerPlaybackEngine` implements the existing plugin-neutral
+`PlaybackEngine` contract through a private Better Player driver. Widgets see
+only normalized readiness, play/pause, buffering, duration, position,
+completion, errors, intrinsic ratio, seek, and playback-rate state. The M19-B
+adapter accepts local `file:` MP4s and HTTP(S) locators whose path identifies an
+MP4; unsupported formats fail before a native controller is created. It does
+not claim HLS, DASH, audio-track selection, subtitle selection, or external
+subtitle support, so Player UI v2 renders no untruthful track controls.
+
+Opening is bounded and remains paused after applying the requested
+binding-specific resume. A resume at or beyond the observed duration safely
+starts from zero. Public failures are fixed, locator-free messages. Each open
+has a generation fence, and a process-wide experimental-engine lease retires
+the prior controller before a new one can receive Android's broadcast plugin
+events. Listener removal, forced native texture disposal, timer/readiness
+cancellation, and engine disposal are idempotent; late events cannot update a
+replacement or disposed session.
+
+### Zanka ownership and locator hygiene
+
+Better Player supplies only its decoder texture. Stock controls, autoplay,
+automatic lifecycle handling, automatic disposal, notifications, PiP,
+background behavior, ASMS track discovery, and retry UI are disabled. Zanka
+continues to own Player UI v2, lifecycle/HOME handling, canonical navigation,
+progress/resume persistence, and its M14 MediaSession/audio-focus bridge. The
+controller is paused before Zanka explicitly chooses playback, and
+`setMixWithOthers(true)` disables Better's competing Media3 focus request.
+Notifications remain off, so Better's notification-owned MediaSession path is
+not activated.
+
+Better Player 1.3.0 otherwise defaults to INFO logging and its upstream setup
+messages can contain a complete media URL. Every M19-B controller instead uses
+`PlayerLogLevel.none`, no caller information, and an empty output list. Its
+uncaught asynchronous source-error zone and teardown paths convert errors to
+fixed messages without printing exception objects, headers, file paths, or
+locators. Logging must remain disabled unless a later milestone introduces an
+explicitly redacted diagnostic wrapper.
+
+Video Display Mode remains outside both engines. Its single authoritative
+surface computes Auto/Original, Fit, Fill/Crop, Fit Width, Fit Height, Stretch,
+aspect presets, and custom ratios. Better's raw texture uses `BoxFit.fill` only
+inside that already calculated tight frame; it performs no second aspect-ratio
+or fit transform. Live display changes therefore do not reopen the engine,
+seek, or write progress.
+
+### Android manifest and dependency scope
+
+The Better Android bridge retains its transitive WorkManager declarations,
+including `FOREGROUND_SERVICE`, `RECEIVE_BOOT_COMPLETED`, the initializer,
+services, and receivers. The native player constructor calls
+`WorkManager.getInstance(context)` even for ordinary playback; removing the
+initializer without supplying and maintaining an equivalent application-level
+configuration could make controller creation fail. M19-B therefore does not
+strip those components. Zanka never invokes Better's cache/pre-cache APIs, so
+the adapter does not enqueue cache work, request a foreground notification, or
+enable background playback.
+
+The compatibility inventory remains the M19-A 1.3.0 inventory below: Better's
+Android platform package is 1.2.0, `libdartjni.so` is its only added native
+library, and no FFmpeg/libav, libmpv, VLC, GPL, LGPL, or bundled non-free media
+runtime is introduced.
+
+### M19-B closure evidence
+
+M19-B passed its bounded experimental basic-MP4 gate on 2026-09-07. Formatting
+changed no files, `flutter analyze` reported no issues, and all 204 Flutter
+tests passed. The large-library guard passed in 304 ms. The final artifacts
+were:
+
+| Artifact | Result | Bytes | Change from beta.4 | SHA-256 |
+| --- | --- | ---: | ---: | --- |
+| Debug APK | Pass | 233,576,394 | n/a (debug baseline differs) | `6af673791ccd03a4ef97d2c7a3250b2f673576e9eadfc4b55e8195e88f5d781d` |
+| Signed release APK | Pass, including R8 | 94,451,450 | +2,373,870 (+2.58%) | `e5570b27f21e69ad79e681309e46f42c9ab76d429ede5cd95f403592e91b0ddf` |
+
+The release adapter delta over the M19-A dependency-only artifact is
+1,703,936 bytes (+1.84%). R8 produced a 22,732,942-byte mapping. Final Gradle
+`dependencyInsight` still selected Media3 1.9.2 over Better's 1.1.1 request;
+no dependency was forced downward. The release APK contains only the existing
+three Android ABIs and Better's `libdartjni.so` additions (131,432 bytes on
+arm64-v8a, 81,628 on armeabi-v7a, and 116,824 on x86_64). The license result
+remains Apache/BSD/MIT/MPL-2.0 only, with no GPL/LGPL/AGPL/non-free runtime.
+The APK has one RSA-4096 signer and matches the permanent certificate SHA-256
+`3F:4A:86:F7:F4:DD:A3:98:E0:4D:D0:59:DD:33:D7:FC:27:4C:AC:B3:62:17:A4:68:B6:D8:D7:C7:07:4C:13:41`.
+Signing configuration and material remain ignored and untracked.
+
+On Samsung SM-S948B / Android 16, a fresh debug install completed the lawful
+12-second sample through Automatic/video_player and the 10-second sample
+through Better. A 3458 ms Better source checkpoint survived route disposal;
+after a controlled two-second reopen and pause the single Zanka MediaSession
+reported 5046 ms. Selecting Fit left that paused position exactly 5046 ms,
+then Reset restored Auto/Original. HOME removed the active Zanka session and
+return recreated it paused at 695 ms. Exit removed it again. Audio diagnostics
+showed paired requests/abandons owned only by `TvMediaBridge` for Zanka. The
+episode-1 completion CTA opened episode 2 through Better, and final exit left
+no Zanka session. A redacted scan found zero Better-named or media-locator log
+lines.
+
+On Television_4K / Android TV API 36 arm64 at 3840x2160, the selector, player,
+episode controls, source choice, and Display Mode were D-pad usable. Both
+Automatic/video_player and Better played the generated MP4s. Better showed
+Replay and Next Episode, navigated to episode 2 without stale state, preserved
+an exact 2299 ms checkpoint across exit/reopen, handled +/-10-second seeks,
+and returned from HOME paused at 924 ms. Fit, Fill/Crop, Stretch/Fit Parent,
+4:3, 16:9, 21:9, and custom 2.39:1 were exercised; Reset restored Auto. Back
+closed the display sheet before leaving the player. During playback there was
+one Zanka MediaSession and `TvMediaBridge` was the only Zanka focus owner;
+after exit the session stack contained zero sessions and focus was abandoned.
+A redacted scan found zero Better-named or media-locator log lines.
+
+One long-lived TV debug process stopped reaching Better readiness after
+several prior validation cycles; the same final APK worked after an in-place
+reinstall created a clean app process, and subsequent playback/teardown passed.
+Because Better remains experimental, this is retained as an M19-C stress-test
+risk rather than interpreted as production approval. No media capture or
+copyrighted validation artifact was retained. Fire physical validation remains
+deferred because hardware is unavailable; no Fire certification is claimed.
+
+### M19-B decision boundary
+
+Better Player remains **Experimental/Developer-only** and Automatic remains
+`video_player`. M19-B evaluates basic MP4 only. HLS, DASH, audio tracks,
+subtitles, wider lifecycle/session certification, and any promotion decision
+belong to M19-C. Fire physical validation remains deferred while hardware is
+unavailable, and no Fire certification is claimed.
+
 ## M19-A Better Player compatibility baseline
 
 **Checkpoint result: passed for dependency and Android build coexistence only.**
@@ -20,11 +164,11 @@ constructs and disposes `BetterPlayerController`, and invokes
 `BetterPlayerUiUtils`; both focused analysis and execution pass, so this
 compatibility gate cannot be satisfied through application tree shaking.
 
-M19-A adds no Better Player adapter, selector, fixture, or product code beyond
-that compile regression. The production engine and Automatic selection remain
-`video_player`; Better Player cannot yet be selected by Zanka. Runtime playback
-and physical device approval are deliberately deferred to the full M19
-integration.
+At the M19-A checkpoint there was no Better Player adapter, selector, fixture,
+or product code beyond that compile regression. The production engine and
+Automatic selection remained `video_player`; runtime playback and physical
+device approval were deliberately deferred. The M19-B section above describes
+the subsequent experimental basic-MP4 integration.
 
 ### Dependency and toolchain evidence
 
@@ -91,13 +235,13 @@ reviewed during the full adapter integration.
 
 The 1.3.0 aggregate itself adds five pure-Dart logging files but no plugin,
 manifest, JNI, ABI, Maven, or packaged `.so` change. Its default release log
-level is INFO and controller setup can log the full data-source URL. The future
-adapter must configure `PlayerLoggerConfiguration` with logging disabled so
-ephemeral media locators never enter logs.
+level is INFO and controller setup can log the full data-source URL. M19-B now
+configures `PlayerLoggerConfiguration` with logging disabled so ephemeral media
+locators never enter logs.
 
 ### Lifecycle and single-owner preflight
 
-The resolved 1.3.0 aggregate over the 1.2.0 platform bridge permits the future
+The resolved 1.3.0 aggregate over the 1.2.0 platform bridge permits the M19-B
 adapter to keep Zanka in control:
 
 - `PlayerControlsConfiguration(showControls: false,
@@ -112,10 +256,12 @@ adapter to keep Zanka in control:
   disabled, leaving the existing M14 bridge as the only MediaSession and audio
   focus owner.
 
-The future adapter must enforce one active controller, because the native event
-bridge broadcasts callbacks across active Better controllers. It must also
-verify notification teardown, HOME/return behavior, exact resume, and the
-rendered subtitle layer on real devices before any production approval.
+M19-B enforces one active experimental controller because the native event
+bridge broadcasts callbacks across active Better controllers. Its bounded
+Samsung and Television_4K runs verified notification-free single-session
+teardown, HOME/return, and source-specific resume for basic MP4. Subtitle
+rendering remains outside this checkpoint and must be verified before any
+production approval.
 
 ### Resolved license inventory
 

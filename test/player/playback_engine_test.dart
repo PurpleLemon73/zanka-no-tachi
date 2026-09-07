@@ -5,6 +5,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zanka_no_tachi/player/playback_domain.dart';
 import 'package:zanka_no_tachi/player/playback_engine.dart';
+import 'package:zanka_no_tachi/player/playback_preferences_store.dart';
 import 'package:zanka_no_tachi/player/video_display_mode.dart';
 
 void main() {
@@ -17,18 +18,101 @@ void main() {
     },
   );
 
+  test('automatic, explicit, and unavailable engine selection is truthful', () {
+    var productionCreations = 0;
+    var betterCreations = 0;
+    final registry = PlaybackEngineRegistry(
+      productionBuilder: () {
+        productionCreations++;
+        return _FakeEngine();
+      },
+      betterPlayerExperimentalBuilder: () {
+        betterCreations++;
+        return _FakeEngine(kind: PlaybackEngineKind.betterPlayerExperimental);
+      },
+    );
+    final automatic = registry.create();
+    final production = registry.create(PlaybackEnginePreference.videoPlayer);
+    final experimental = registry.create(
+      PlaybackEnginePreference.betterPlayerExperimental,
+    );
+    final unavailable = PlaybackEngineRegistry(
+      productionBuilder: _FakeEngine.new,
+    ).create(PlaybackEnginePreference.betterPlayerExperimental);
+
+    expect(automatic.engine.kind, PlaybackEngineKind.videoPlayer);
+    expect(automatic.fallbackReason, isNull);
+    expect(production.engine.kind, PlaybackEngineKind.videoPlayer);
+    expect(production.fallbackReason, isNull);
+    expect(
+      experimental.engine.kind,
+      PlaybackEngineKind.betterPlayerExperimental,
+    );
+    expect(experimental.fallbackReason, isNull);
+    expect(unavailable.engine.kind, PlaybackEngineKind.videoPlayer);
+    expect(unavailable.fallbackReason, contains('unavailable'));
+    expect(productionCreations, 2);
+    expect(betterCreations, 1);
+  });
+
+  test('engine preference parsing is tolerant and defaults to Automatic', () {
+    expect(
+      PlaybackEnginePreference.parse(null),
+      PlaybackEnginePreference.automatic,
+    );
+    expect(
+      PlaybackEnginePreference.parse('unknown-or-retired-engine'),
+      PlaybackEnginePreference.automatic,
+    );
+    expect(
+      PlaybackEnginePreference.parse('mediaKit'),
+      PlaybackEnginePreference.automatic,
+    );
+    expect(
+      PlaybackEnginePreference.parse('betterPlayerExperimental'),
+      PlaybackEnginePreference.betterPlayerExperimental,
+    );
+  });
+
   test(
-    'automatic and unavailable explicit preferences safely use production',
+    'engine preference is device-local and excluded from portable settings',
     () {
-      final registry = PlaybackEngineRegistry(
-        productionBuilder: _FakeEngine.new,
+      const preferences = PlaybackPreferences(
+        enginePreference: PlaybackEnginePreference.betterPlayerExperimental,
       );
-      final automatic = registry.create();
-      final unavailable = registry.create(PlaybackEnginePreference.mediaKit);
-      expect(automatic.engine.kind, PlaybackEngineKind.videoPlayer);
-      expect(automatic.fallbackReason, isNull);
-      expect(unavailable.engine.kind, PlaybackEngineKind.videoPlayer);
-      expect(unavailable.fallbackReason, contains('not production-approved'));
+      expect(
+        PlaybackPreferences.fromJson(preferences.toJson()).enginePreference,
+        PlaybackEnginePreference.betterPlayerExperimental,
+      );
+      expect(preferences.toBackupJson(), isNot(contains('enginePreference')));
+    },
+  );
+
+  test(
+    'saved engine change affects the next preference snapshot only',
+    () async {
+      final directory = await Directory.systemTemp.createTemp(
+        'zanka-engine-preference-',
+      );
+      addTearDown(() => directory.delete(recursive: true));
+      final store = PlaybackPreferencesStore(
+        file: File('${directory.path}/player-preferences.json'),
+      );
+      final currentSessionPreferences = await store.load();
+      await store.save(
+        currentSessionPreferences.copyWith(
+          enginePreference: PlaybackEnginePreference.betterPlayerExperimental,
+        ),
+      );
+
+      expect(
+        currentSessionPreferences.enginePreference,
+        PlaybackEnginePreference.automatic,
+      );
+      expect(
+        (await store.load()).enginePreference,
+        PlaybackEnginePreference.betterPlayerExperimental,
+      );
     },
   );
 
@@ -116,6 +200,8 @@ void main() {
 }
 
 class _FakeEngine implements PlaybackEngine {
+  _FakeEngine({this.kind = PlaybackEngineKind.videoPlayer});
+
   final ValueNotifier<PlaybackEngineState> notifier = ValueNotifier(
     const PlaybackEngineState(),
   );
@@ -125,7 +211,7 @@ class _FakeEngine implements PlaybackEngine {
   @override
   String get diagnosticName => 'fake-video-player';
   @override
-  PlaybackEngineKind get kind => PlaybackEngineKind.videoPlayer;
+  final PlaybackEngineKind kind;
   @override
   ValueListenable<PlaybackEngineState> get state => notifier;
   @override

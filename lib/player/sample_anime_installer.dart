@@ -16,6 +16,8 @@ const sampleEpisodeOneId = CanonicalEpisodeId('local-sample-episode-1');
 const sampleEpisodeTwoId = CanonicalEpisodeId('local-sample-episode-2');
 
 class SampleAnimeInstaller {
+  // Keep the public `root:` label; the backing field is intentionally private.
+  // ignore: prefer_initializing_formals
   SampleAnimeInstaller(this.database, {Directory? root}) : _root = root;
   final CanonicalDatabase database;
   final Directory? _root;

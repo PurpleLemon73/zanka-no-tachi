@@ -30,9 +30,19 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.textContaining('available'), findsOneWidget);
 
-      await tester.ensureVisible(
+      final developerList = find
+          .descendant(
+            of: find.byKey(const Key('developer-sources-list')),
+            matching: find.byType(Scrollable),
+          )
+          .first;
+      await tester.scrollUntilVisible(
         find.byKey(const Key('developer-search-field')),
+        400,
+        scrollable: developerList,
       );
+      await tester.drag(developerList, const Offset(0, 180));
+      await tester.pumpAndSettle();
       await tester.enterText(
         find.byKey(const Key('developer-search-field')),
         'mad',

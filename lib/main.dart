@@ -27,6 +27,7 @@ import 'player/playback_preferences_store.dart';
 import 'player/playback_repository.dart';
 import 'player/playback_source.dart';
 import 'player/sample_anime_installer.dart';
+import 'player/ui/playback_engine_preference_selector.dart';
 import 'local_library/local_library_service.dart';
 import 'local_library/backup_service.dart';
 import 'adapter_platform/adapter_diagnostics.dart';
@@ -77,6 +78,7 @@ class ZankaApp extends StatefulWidget {
     this.diagnostics,
     this.enableOnboarding,
     this.liveMediaTransport,
+    this.playbackPreferencesStore,
     this.presentationMode = PresentationMode.mobile,
   });
   final LiveProviderRepository? repository;
@@ -84,6 +86,7 @@ class ZankaApp extends StatefulWidget {
   final LocalDiagnostics? diagnostics;
   final bool? enableOnboarding;
   final LiveMediaTransport? liveMediaTransport;
+  final PlaybackPreferencesStore? playbackPreferencesStore;
   final PresentationMode presentationMode;
   @override
   State<ZankaApp> createState() => _ZankaAppState();
@@ -96,6 +99,7 @@ class _ZankaAppState extends State<ZankaApp> {
   late final ReaderRepository readerRepository;
   late final PlaybackRepository playbackRepository;
   late final LocalLibraryService localLibraryService;
+  late final PlaybackPreferencesStore playerPreferences;
   late final bool ownsRepository;
   late final AppPreferencesStore preferences;
   late final LocalDiagnostics diagnostics;
@@ -122,7 +126,8 @@ class _ZankaAppState extends State<ZankaApp> {
         );
     controller = DeveloperSourcesController(repository)..initialize();
     final readerPreferences = ReaderPreferencesStore();
-    final playerPreferences = PlaybackPreferencesStore();
+    playerPreferences =
+        widget.playbackPreferencesStore ?? PlaybackPreferencesStore();
     readerRepository = ReaderRepository(
       database: repository.database,
       sources: ReaderSourceRegistry([
@@ -271,6 +276,7 @@ class _ZankaAppState extends State<ZankaApp> {
               developerBuilder: (_) => DeveloperSourcesScreen(
                 controller: controller,
                 diagnostics: diagnostics,
+                playbackPreferencesStore: playerPreferences,
               ),
               aboutBuilder: (_) => AboutZankaScreen(diagnostics: diagnostics),
               appearance: current,
@@ -299,9 +305,11 @@ class DeveloperSourcesScreen extends StatefulWidget {
     super.key,
     required this.controller,
     required this.diagnostics,
+    required this.playbackPreferencesStore,
   });
   final DeveloperSourcesController controller;
   final LocalDiagnostics diagnostics;
+  final PlaybackPreferencesStore playbackPreferencesStore;
   @override
   State<DeveloperSourcesScreen> createState() => _DeveloperSourcesScreenState();
 }
@@ -329,11 +337,16 @@ class _DeveloperSourcesScreenState extends State<DeveloperSourcesScreen> {
             : null,
       ),
       body: ListView(
+        key: const Key('developer-sources-list'),
         padding: const EdgeInsets.all(16),
         children: [
           const Text(
             'M3 validation harness — public metadata only',
             style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 12),
+          PlaybackEnginePreferenceSelector(
+            preferencesStore: widget.playbackPreferencesStore,
           ),
           const SizedBox(height: 12),
           ...widget.controller.providers.map(

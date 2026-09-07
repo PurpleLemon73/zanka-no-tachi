@@ -1,5 +1,62 @@
 # Anime Player — M6
 
+## M19-B experimental Better Player adapter
+
+Zanka now exposes an Android-only **Better Player (Experimental)** choice under
+Settings → Developer for bounded basic-MP4 A/B testing. **Automatic** remains
+the recommended default and always resolves to the production `video_player`
+adapter. Explicit `video_player` does the same; an explicit Better selection on
+a build or platform without the adapter falls back visibly to `video_player`.
+Changing the setting affects the next playback session and never recreates an
+active player.
+
+The engine preference is device-local, excluded from portable backups, and
+preserved on the receiving device during restore. Engine selection does not own
+or mutate canonical progress, watched state, exact source-binding resume,
+source choice, autoplay, or Display Mode.
+
+The Better adapter imports no package types into player widgets. It exposes the
+same engine-neutral state consumed by Player UI v2, accepts basic local or
+HTTP(S) MP4 only, applies a bounded exact resume while remaining paused, fences
+late native events by generation/session, and force-disposes controllers and
+textures idempotently. Audio/subtitle controls stay hidden because this
+checkpoint advertises no track capabilities; HLS and DASH are not certified.
+
+Zanka remains the sole owner of controls, display geometry, lifecycle,
+MediaSession, and audio focus. Better stock controls, autoplay, lifecycle
+handling, auto-disposal, notifications, PiP/background behavior, ASMS track
+discovery, and retry UI are disabled. The raw Better texture fills only the
+tight frame already computed by Video Display Mode, avoiding a second fit or
+aspect transform.
+
+Better Player's upstream INFO logger can reveal complete locators. Every Zanka
+Better controller instead uses log level `none`, no caller information, and no
+outputs; asynchronous errors and teardown are translated without logging raw
+URLs, headers, paths, or exception objects. This must remain the default unless
+a future explicitly redacted diagnostic wrapper is implemented.
+
+### M19-B validation
+
+The full 204-test suite, analysis, debug build, signed release/R8 build, and
+304 ms large-library guard passed. The signed release is 94,451,450 bytes
+(+2.58% over beta.4), resolves Media3 1.9.2 without a forced downgrade, and
+retains the permanent RSA-4096 signer. Its only Better-native additions are the
+three ABI variants of `libdartjni.so`; no bundled codec runtime was added.
+
+Samsung SM-S948B / Android 16 played the generated MP4 with both Automatic and
+Better. Better preserved a 3458 ms binding checkpoint across route disposal;
+a controlled two-second reopened run paused at 5046 ms. Fit applied live at the
+same 5046 ms and Reset restored Auto. HOME/return resumed the route paused,
+exit removed the Zanka session, `TvMediaBridge` alone requested and abandoned
+Zanka audio focus, and the completion CTA opened episode 2 through Better.
+Television_4K likewise passed D-pad selection, both-engine playback,
+Replay/Next Episode, exact 2299 ms reopen, seeks, HOME/return, Back-first sheet
+dismissal, and all representative display modes. Both devices produced zero
+Better-named or media-locator log lines in redacted checks. A long-lived TV
+debug process required an in-place reinstall before one final Better readiness
+run; this remains an explicit M19-C stress risk and is one reason the adapter
+is not promoted.
+
 ## M18 video display modes
 
 Player presentation now owns a complete engine-neutral display policy. Fresh
@@ -54,11 +111,11 @@ Next has default focus. End-of-available content is stated truthfully. Audio and
 subtitle actions render only when an engine reports both the capability and real
 tracks. Production `video_player` reports neither, so no fake selectors appear.
 
-`PlaybackEngineRegistry` deliberately supports Automatic, approved
-`video_player`, and a future preference compatibility value. Automatic always
-chooses the approved production adapter. A removed or unapproved engine value
-falls back with an internal diagnostic reason; it is never shown as normal
-consumer-facing player jargon.
+`PlaybackEngineRegistry` supports Automatic, approved `video_player`, and the
+optional Better Player experimental builder. Automatic always chooses the
+approved production adapter. An unavailable experimental builder falls back to
+`video_player` with a bounded explanation. The selector remains in Developer
+settings rather than normal playback UI.
 
 ## M14 television controls
 
@@ -110,14 +167,16 @@ resolver and verified installment, not merely to canonical availability.
 
 ## 5. Player UI/control architecture
 
-The app uses first-party `video_player` 2.14.0, the stable release selected for
-with Flutter 3.47.2/Dart 3.13.2. It supplies the platform decoder and texture;
-on Android, Zanka's native MediaSession bridge is the single audio-focus owner
-and `video_player` is configured not to request competing focus. Zanka owns
-play/pause, scrubber, elapsed/duration, ±10-second seeks, double-tap
-seek, buffering indicator, retry, source/episode/settings sheets, previous/next,
-and immersive fullscreen controls. Controls auto-hide after three seconds of
-playback and return on tap.
+The production path uses first-party `video_player` 2.14.0, the stable release
+selected with Flutter 3.47.2/Dart 3.13.2. The original `better_player: 1.3.0`
+is packaged as an explicit Android-only experimental basic-MP4 adapter; it is
+not an automatic or production replacement. Both supply only the decoder and
+texture behind `PlaybackEngine`. On Android, Zanka's native MediaSession bridge
+is the single audio-focus owner and both adapters are configured not to request
+competing focus. Zanka owns play/pause, scrubber, elapsed/duration, ±10-second
+seeks, double-tap seek, buffering indicator, retry,
+source/episode/settings sheets, previous/next, and immersive fullscreen
+controls. Controls auto-hide after three seconds of playback and return on tap.
 
 ## 6. Canonical vs source-specific progress
 
@@ -145,9 +204,10 @@ Manifests expose independent `PlaybackTrack` lists for audio and subtitles,
 including stable session IDs, labels, and optional language. Preferences reserve
 preferred audio/subtitle languages. The local sample declares its default audio
 track and no subtitle track. The production `video_player` adapter does not
-claim reliable platform audio/subtitle selection, so those controls are absent
-rather than presenting a fake selector. External subtitle loading remains
-deferred unless a future approved engine truthfully reports that capability.
+claim reliable platform audio/subtitle selection. The M19-B Better adapter also
+reports those capabilities as unsupported until later certification, so neither
+path presents a fake selector. External subtitle loading remains deferred unless
+a future approved engine truthfully reports that capability.
 
 ## 9. Episode navigation
 
@@ -184,6 +244,9 @@ both live providers disabled.
 
 - Codec/container support follows each platform's `video_player` backend; the
   deterministic Android proof uses H.264/AAC MP4.
+- Better Player remains Developer-only, Android-only, and basic-MP4-only in
+  M19-B. HLS, DASH, audio/subtitle tracks, and broader production certification
+  are deferred to M19-C.
 - Track enumeration is manifest-level; this plugin version cannot reliably
   switch embedded audio/subtitle streams across platforms.
 - External WebVTT/SRT selection, picture-in-picture, casting, lock controls,
@@ -203,12 +266,15 @@ session, translate failures, expose tracks honestly, and never make a stream URL
 or provider token canonical identity. HLS support should be added only with
 bounded refresh/cache behavior and explicit lawful-source evidence.
 
-## M16/M17 engine decision
+## M16/M17 decision and M19 experiment
 
 M16 compared an isolated `media_kit` spike with the production path using
 original local fixtures. M17 retained the durable engine contract and Player UI
 v2 but rejected that runtime from the package: its Television_4K exact-reopen
 and HLS/DASH gates failed, it had no single-owner MediaSession integration, it
 materially increased APK size, and its LGPL package was incomplete. The
-production `VideoPlayerPlaybackEngine` remains the only adapter. See
+production `VideoPlayerPlaybackEngine` remains the approved adapter and the
+Automatic default. M19-B adds original Better Player 1.3.0 only as an explicit
+Developer experiment for basic MP4; it has not reversed the M17 production
+decision or completed segmented-format/track certification. See
 [Playback Engine Evaluation](PLAYBACK_ENGINE_EVALUATION.md).

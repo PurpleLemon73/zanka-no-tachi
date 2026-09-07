@@ -2,10 +2,11 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
 import 'playback_domain.dart';
+import 'playback_engine_preference.dart';
 
-enum PlaybackEngineKind { videoPlayer, mediaKitExperimental }
+export 'playback_engine_preference.dart';
 
-enum PlaybackEnginePreference { automatic, videoPlayer, mediaKit }
+enum PlaybackEngineKind { videoPlayer, betterPlayerExperimental }
 
 enum PlaybackEnginePhase { idle, loading, ready, completed, failed, disposed }
 
@@ -154,17 +155,25 @@ class PlaybackEngineSelection {
 }
 
 class PlaybackEngineRegistry {
-  const PlaybackEngineRegistry({required this.productionBuilder});
+  const PlaybackEngineRegistry({
+    required this.productionBuilder,
+    this.betterPlayerExperimentalBuilder,
+  });
   final PlaybackEngineBuilder productionBuilder;
+  final PlaybackEngineBuilder? betterPlayerExperimentalBuilder;
 
   PlaybackEngineSelection create([
     PlaybackEnginePreference preference = PlaybackEnginePreference.automatic,
   ]) {
-    if (preference == PlaybackEnginePreference.mediaKit) {
+    if (preference == PlaybackEnginePreference.betterPlayerExperimental) {
+      final builder = betterPlayerExperimentalBuilder;
+      if (builder != null) {
+        return PlaybackEngineSelection(engine: builder());
+      }
       return PlaybackEngineSelection(
         engine: productionBuilder(),
         fallbackReason:
-            'media_kit is not production-approved in this build; using video_player.',
+            'Better Player is unavailable in this build; using video_player.',
       );
     }
     return PlaybackEngineSelection(engine: productionBuilder());

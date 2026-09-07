@@ -4,7 +4,9 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 
 class SearchHistoryStore {
+  // Keep the public `file:` label; the backing field is intentionally private.
   SearchHistoryStore({File? file, this.limit = 12})
+    // ignore: prefer_initializing_formals
     : _file = file,
       _persistent = true;
   SearchHistoryStore.memory({this.limit = 12})
