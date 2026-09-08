@@ -44,15 +44,53 @@ class AnimePlayerScreen extends StatefulWidget {
     this.isTv = false,
     this.mediaBridge,
     this.engineRegistry,
-  });
+  }) : _presentation = null;
+
+  const AnimePlayerScreen._episode(
+    this._presentation, {
+    required this.repository,
+    required this.request,
+    required this.isTv,
+    required this.engineRegistry,
+  }) : mediaBridge = null;
+
   final PlaybackRepository repository;
   final PlaybackSessionRequest request;
   final bool isTv;
   final AndroidMediaBridge? mediaBridge;
   final PlaybackEngineRegistry? engineRegistry;
+  final _FullscreenPresentation? _presentation;
 
   @override
   State<AnimePlayerScreen> createState() => _AnimePlayerScreenState();
+}
+
+/// Episode routes share presentation, never a decoder or progress session.
+/// Serialize system-UI changes so a pending enter cannot finish after an exit
+/// on the replacement route.
+class _FullscreenPresentation {
+  bool fullscreen = false;
+  Future<void> _pending = Future<void>.value();
+
+  Future<void> setFullscreen(bool value) {
+    fullscreen = value;
+    final operation = _pending.then((_) async {
+      await SystemChrome.setEnabledSystemUIMode(
+        value ? SystemUiMode.immersiveSticky : SystemUiMode.edgeToEdge,
+      );
+      await SystemChrome.setPreferredOrientations(
+        value
+            ? const [
+                DeviceOrientation.landscapeLeft,
+                DeviceOrientation.landscapeRight,
+              ]
+            : DeviceOrientation.values,
+      );
+    });
+    // Report this operation's error to its caller without blocking later exits.
+    _pending = operation.catchError((Object _) {});
+    return operation;
+  }
 }
 
 class _AnimePlayerScreenState extends State<AnimePlayerScreen>
@@ -61,7 +99,11 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
   PlaybackEngine? engine;
   Object? error;
   bool controlsVisible = true;
-  bool fullscreen = false;
+  late final _FullscreenPresentation _presentation =
+      widget._presentation ?? _FullscreenPresentation();
+  bool get fullscreen => _presentation.fullscreen;
+  bool _ownsPresentation = true;
+  bool _navigatingEpisode = false;
   Timer? hideTimer;
   Timer? saveTimer;
   bool handledNaturalEnd = false;
@@ -351,23 +393,11 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
   }
 
   Future<void> _toggleFullscreen() async {
-    fullscreen = !fullscreen;
-    if (fullscreen) {
-      await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-      await SystemChrome.setPreferredOrientations(const [
-        DeviceOrientation.landscapeLeft,
-        DeviceOrientation.landscapeRight,
-      ]);
-    } else {
-      await _restoreSystemUi();
-    }
+    await _presentation.setFullscreen(!fullscreen);
     if (mounted) setState(() {});
   }
 
-  Future<void> _restoreSystemUi() async {
-    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-    await SystemChrome.setPreferredOrientations(DeviceOrientation.values);
-  }
+  Future<void> _restoreSystemUi() => _presentation.setFullscreen(false);
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
@@ -408,7 +438,7 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
     unawaited(_flush());
     unawaited(engine?.dispose());
     unawaited(mediaBridge.deactivate());
-    if (fullscreen) unawaited(_restoreSystemUi());
+    if (_ownsPresentation && fullscreen) unawaited(_restoreSystemUi());
     super.dispose();
   }
 
@@ -642,35 +672,46 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
   }
 
   Future<void> _openAdjacent(int direction) async {
-    final value = await widget.repository.adjacent(session!, direction);
-    if (!mounted) return;
-    if (value == null) return;
-    if (value.openableBindings.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'That episode has no playable source. Try another source from Details.',
+    if (_navigatingEpisode) return;
+    _navigatingEpisode = true;
+    try {
+      final value = await widget.repository.adjacent(session!, direction);
+      if (!mounted) return;
+      if (value == null) return;
+      if (value.openableBindings.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'That episode has no playable source. Try another source from Details.',
+            ),
+          ),
+        );
+        return;
+      }
+      await _flush();
+      if (!mounted) return;
+      final navigation = Navigator.of(context).pushReplacement(
+        MaterialPageRoute<void>(
+          builder: (_) => AnimePlayerScreen._episode(
+            _presentation,
+            repository: widget.repository,
+            isTv: widget.isTv,
+            engineRegistry: widget.engineRegistry,
+            request: PlaybackSessionRequest(
+              mediaId: session!.mediaId,
+              episodeId: value.episode.id,
+              startAtBeginning: direction > 0,
+            ),
           ),
         ),
       );
-      return;
+      // pushReplacement disposes the old route after its transition. Only the
+      // replacement may restore fullscreen, even if Back is pressed meanwhile.
+      _ownsPresentation = false;
+      await navigation;
+    } finally {
+      _navigatingEpisode = false;
     }
-    await _flush();
-    if (!mounted) return;
-    await Navigator.of(context).pushReplacement(
-      MaterialPageRoute<void>(
-        builder: (_) => AnimePlayerScreen(
-          repository: widget.repository,
-          isTv: widget.isTv,
-          engineRegistry: widget.engineRegistry,
-          request: PlaybackSessionRequest(
-            mediaId: session!.mediaId,
-            episodeId: value.episode.id,
-            startAtBeginning: direction > 0,
-          ),
-        ),
-      ),
-    );
   }
 
   Future<void> _openAlternate() async {

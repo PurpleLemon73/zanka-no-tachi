@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:drift/native.dart';
@@ -16,6 +17,7 @@ import 'package:zanka_no_tachi/player/playback_preferences_store.dart';
 import 'package:zanka_no_tachi/player/playback_repository.dart';
 import 'package:zanka_no_tachi/player/playback_source.dart';
 import 'package:zanka_no_tachi/player/ui/anime_player_screen.dart';
+import 'package:zanka_no_tachi/player/video_display_mode.dart';
 
 const _mediaId = CanonicalMediaId('player-ui-anime');
 const _providerId = ProviderId('local-player-ui');
@@ -24,6 +26,232 @@ const _episodeTwo = CanonicalEpisodeId('player-ui-episode-2');
 const _episodeThree = CanonicalEpisodeId('player-ui-episode-3');
 
 void main() {
+  for (final isTv in [false, true]) {
+    testWidgets(
+      'fullscreen episode navigation preserves presentation and resume (${isTv ? 'TV' : 'mobile'})',
+      (tester) async {
+        final fixture = (await tester.runAsync(
+          () => _PlayerFixture.create(episodeCount: 3),
+        ))!;
+        _disposeFixtureAfterScreen(tester, fixture);
+        final systemCalls = _recordSystemUiCalls(tester);
+        const displayMode = VideoDisplayMode(
+          fit: VideoDisplayFit.fitWidth,
+          aspectPreset: VideoAspectPreset.twentyOneNine,
+        );
+        await tester.runAsync(() async {
+          await fixture.repository.savePreferences(
+            PlaybackPreferences(
+              autoplay: false,
+              videoDisplayMode: displayMode,
+              enginePreference: isTv
+                  ? PlaybackEnginePreference.betterPlayerExperimental
+                  : PlaybackEnginePreference.automatic,
+            ),
+          );
+          for (final episode in [_episodeOne, _episodeTwo]) {
+            final session = await fixture.repository.open(
+              PlaybackSessionRequest(mediaId: _mediaId, episodeId: episode),
+            );
+            await fixture.repository.savePosition(
+              session,
+              Duration(seconds: episode == _episodeOne ? 27 : 43),
+              const Duration(seconds: 100),
+            );
+          }
+        });
+        final production = _EngineFactory();
+        final better = _EngineFactory(
+          kind: PlaybackEngineKind.betterPlayerExperimental,
+        );
+        final engines = isTv ? better : production;
+        await _pumpPlayer(
+          tester,
+          fixture,
+          engines,
+          _episodeOne,
+          isTv: isTv,
+          engineRegistry: PlaybackEngineRegistry(
+            productionBuilder: production.create,
+            betterPlayerExperimentalBuilder: better.create,
+          ),
+        );
+        expect(find.byType(AppBar), findsOneWidget);
+        expect(engines.created.single.openPositions, [
+          const Duration(seconds: 27),
+        ]);
+        _invokeIconButton(tester, 'Fullscreen');
+        await tester.pumpAndSettle();
+        expect(systemCalls.map((call) => call.arguments), [
+          'SystemUiMode.immersiveSticky',
+          [
+            'DeviceOrientation.landscapeLeft',
+            'DeviceOrientation.landscapeRight',
+          ],
+        ]);
+        systemCalls.clear();
+
+        if (isTv) {
+          expect(_focusedTooltip(tester), 'Play');
+          await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+          await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+          await tester.pump();
+          expect(_focusedTooltip(tester), 'Next episode');
+          await tester.sendKeyEvent(LogicalKeyboardKey.select);
+        } else {
+          await tester.tap(find.byTooltip('Next episode'));
+        }
+        await _pumpUntilReady(tester, engines, 2);
+        await tester.pump(const Duration(seconds: 1));
+        expect(find.byType(AppBar), findsNothing);
+        expect(find.byTooltip('Exit fullscreen'), findsOneWidget);
+        expect(
+          systemCalls,
+          isEmpty,
+          reason: 'Outgoing disposal must not reset system UI',
+        );
+        expect(
+          engines.created.first.state.value.phase,
+          PlaybackEnginePhase.disposed,
+        );
+        expect(engines.created.last.openedExternalIds, ['episode-2']);
+        expect(engines.created.last.openPositions, [Duration.zero]);
+        expect(
+          tester
+              .widget<VideoDisplaySurface>(find.byType(VideoDisplaySurface))
+              .mode
+              .toJson(),
+          displayMode.toJson(),
+        );
+        expect(
+          (await fixture.database.animeSourcePlaybackResume(
+            _providerId,
+            'episode-2',
+          ))!.position,
+          const Duration(seconds: 43),
+          reason: 'Starting Next must not copy the previous episode resume',
+        );
+        if (isTv) expect(_focusedTooltip(tester), 'Play');
+
+        _invokeIconButton(tester, 'Previous episode');
+        await _pumpUntilReady(tester, engines, 3);
+        await tester.pump(const Duration(seconds: 1));
+        expect(find.byType(AppBar), findsNothing);
+        expect(systemCalls, isEmpty);
+        expect(engines.created.last.openedExternalIds, ['episode-1']);
+        expect(engines.created.last.openPositions, [
+          const Duration(seconds: 27),
+        ]);
+        expect(isTv ? production.created : better.created, isEmpty);
+
+        // The completion CTA uses the same Next path and must inherit presentation.
+        engines.created.last.complete();
+        await tester.pump();
+        await tester.pump();
+        await tester.tap(find.text('Next Episode'));
+        await _pumpUntilReady(tester, engines, 4);
+        await tester.pump(const Duration(seconds: 1));
+        expect(find.byTooltip('Exit fullscreen'), findsOneWidget);
+        expect(systemCalls, isEmpty);
+
+        await tester.binding.handlePopRoute();
+        await tester.pumpAndSettle();
+        expect(find.byType(AnimePlayerScreen), findsOneWidget);
+        expect(find.byType(AppBar), findsOneWidget);
+        expect(systemCalls.map((call) => call.arguments), [
+          'SystemUiMode.edgeToEdge',
+          DeviceOrientation.values.map((value) => value.toString()).toList(),
+        ]);
+        systemCalls.clear();
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump();
+        expect(
+          systemCalls,
+          isEmpty,
+          reason: 'Explicit fullscreen exit restores only once',
+        );
+      },
+    );
+  }
+
+  testWidgets(
+    'Back during fullscreen episode replacement restores presentation once',
+    (tester) async {
+      final fixture = (await tester.runAsync(
+        () => _PlayerFixture.create(episodeCount: 3),
+      ))!;
+      _disposeFixtureAfterScreen(tester, fixture);
+      await tester.runAsync(
+        () => fixture.repository.savePreferences(
+          const PlaybackPreferences(autoplay: false),
+        ),
+      );
+      final enterFullscreen = Completer<void>();
+      addTearDown(() {
+        if (!enterFullscreen.isCompleted) enterFullscreen.complete();
+      });
+      final systemCalls = _recordSystemUiCalls(
+        tester,
+        waitForImmersive: enterFullscreen.future,
+      );
+      final engines = _EngineFactory();
+      await _pumpPlayer(tester, fixture, engines, _episodeOne);
+      _invokeIconButton(tester, 'Fullscreen');
+      await tester.pump();
+      expect(systemCalls.single.arguments, 'SystemUiMode.immersiveSticky');
+
+      // Repeated key/touch callbacks must not transfer ownership twice.
+      _invokeIconButton(tester, 'Next episode');
+      _invokeIconButton(tester, 'Next episode');
+      await _pumpUntilReady(tester, engines, 2);
+      expect(
+        find.byType(AnimePlayerScreen, skipOffstage: false),
+        findsNWidgets(2),
+        reason: 'Exercise Back before the outgoing route is disposed',
+      );
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+      expect(systemCalls, hasLength(1));
+
+      // Release the old route's pending enter only after the new route exits.
+      enterFullscreen.complete();
+      await tester.pumpAndSettle();
+      expect(find.byType(AnimePlayerScreen), findsOneWidget);
+      expect(find.byTooltip('Fullscreen'), findsOneWidget);
+      expect(find.byType(AppBar), findsOneWidget);
+      expect(systemCalls.map((call) => call.arguments), [
+        'SystemUiMode.immersiveSticky',
+        ['DeviceOrientation.landscapeLeft', 'DeviceOrientation.landscapeRight'],
+        'SystemUiMode.edgeToEdge',
+        DeviceOrientation.values.map((value) => value.toString()).toList(),
+      ]);
+      systemCalls.clear();
+
+      // Windowed navigation and a later fresh player do not inherit fullscreen.
+      _invokeIconButton(tester, 'Next episode');
+      await _pumpUntilReady(tester, engines, 3);
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.byTooltip('Fullscreen'), findsOneWidget);
+      expect(systemCalls, isEmpty);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+      final freshEngines = _EngineFactory();
+      await _pumpPlayer(tester, fixture, freshEngines, _episodeOne);
+      expect(find.byTooltip('Fullscreen'), findsOneWidget);
+      expect(systemCalls, isEmpty);
+
+      _invokeIconButton(tester, 'Fullscreen');
+      await tester.pumpAndSettle();
+      systemCalls.clear();
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+      expect(systemCalls.map((call) => call.arguments), [
+        'SystemUiMode.edgeToEdge',
+        DeviceOrientation.values.map((value) => value.toString()).toList(),
+      ]);
+    },
+  );
+
   testWidgets(
     'player UI keeps canonical episode navigation, completion and replay deliberate',
     (tester) async {
@@ -388,6 +616,33 @@ String? _focusedTooltip(WidgetTester tester) {
     return true;
   });
   return tooltip;
+}
+
+List<MethodCall> _recordSystemUiCalls(
+  WidgetTester tester, {
+  Future<void>? waitForImmersive,
+}) {
+  final calls = <MethodCall>[];
+  tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+    SystemChannels.platform,
+    (call) async {
+      if (call.method == 'SystemChrome.setEnabledSystemUIMode' ||
+          call.method == 'SystemChrome.setPreferredOrientations') {
+        calls.add(call);
+      }
+      if (call.arguments == 'SystemUiMode.immersiveSticky') {
+        await waitForImmersive;
+      }
+      return null;
+    },
+  );
+  addTearDown(() {
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      null,
+    );
+  });
+  return calls;
 }
 
 Finder _iconButtonForTooltip(String tooltip) => find
