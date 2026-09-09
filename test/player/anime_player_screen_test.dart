@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:drift/native.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zanka_no_tachi/canonical/domain/bindings.dart';
@@ -30,6 +31,10 @@ void main() {
     testWidgets(
       'fullscreen episode navigation preserves presentation and resume (${isTv ? 'TV' : 'mobile'})',
       (tester) async {
+        await tester.binding.setSurfaceSize(
+          isTv ? const Size(640, 360) : const Size(390, 844),
+        );
+        addTearDown(() => tester.binding.setSurfaceSize(null));
         final fixture = (await tester.runAsync(
           () => _PlayerFixture.create(episodeCount: 3),
         ))!;
@@ -77,6 +82,48 @@ void main() {
           ),
         );
         expect(find.byType(AppBar), findsOneWidget);
+        for (final (tooltip, label) in [
+          ('Back 10 seconds', '-10s'),
+          ('Forward 10 seconds', '+10s'),
+        ]) {
+          expect(
+            find.descendant(
+              of: _iconButtonForTooltip(tooltip),
+              matching: find.text(label),
+            ),
+            findsOneWidget,
+          );
+        }
+        final playButton = _iconButtonForTooltip('Play');
+        final seekSize = tester.getSize(
+          _iconButtonForTooltip('Back 10 seconds'),
+        );
+        expect(tester.getSize(playButton).width, greaterThan(seekSize.width));
+        expect(tester.getSize(playButton).height, greaterThan(seekSize.height));
+        _expectRoundedFocusStyle(
+          tester.widget<IconButton>(playButton).style,
+          isA<CircleBorder>(),
+        );
+        final semantics = tester.ensureSemantics();
+        try {
+          await tester.pump();
+          for (final tooltip in ['Display mode', 'Fullscreen']) {
+            final semanticsData = tester
+                .getSemantics(_iconButtonForTooltip(tooltip))
+                .getSemanticsData();
+            expect(semanticsData.tooltip, tooltip);
+            expect(semanticsData.hasAction(SemanticsAction.tap), isTrue);
+            expect(
+              tester
+                  .widget<IconButton>(_iconButtonForTooltip(tooltip))
+                  .onPressed,
+              isNotNull,
+            );
+          }
+        } finally {
+          semantics.dispose();
+        }
+        expect(tester.takeException(), isNull);
         expect(engines.created.single.openPositions, [
           const Duration(seconds: 27),
         ]);
@@ -316,10 +363,29 @@ void main() {
       expect(find.text('Episode complete'), findsOneWidget);
       expect(find.text('Replay'), findsOneWidget);
       expect(find.text('Next Episode'), findsOneWidget);
+      final replayButton = find.ancestor(
+        of: find.text('Replay'),
+        matching: find.byType(OutlinedButton),
+      );
+      final nextEpisodeButton = find.ancestor(
+        of: find.text('Next Episode'),
+        matching: find.byType(FilledButton),
+      );
+      expect(replayButton, findsOneWidget);
+      expect(nextEpisodeButton, findsOneWidget);
+      _expectRoundedFocusStyle(
+        tester.widget<OutlinedButton>(replayButton).style,
+        isA<StadiumBorder>(),
+      );
+      _expectRoundedFocusStyle(
+        tester.widget<FilledButton>(nextEpisodeButton).style,
+        isA<StadiumBorder>(),
+      );
 
       await tester.tap(find.text('Next Episode'));
       await tester.pump(const Duration(milliseconds: 400));
       await _pumpUntilReady(tester, engines, 5);
+      await tester.pumpAndSettle();
       expect(engines.created.last.openPositions, [Duration.zero]);
       expect(engines.created.last.openedExternalIds, ['episode-3']);
 
@@ -335,10 +401,7 @@ void main() {
       );
 
       final last = engines.created.last;
-      tester
-          .widget<OutlinedButton>(find.byType(OutlinedButton).last)
-          .onPressed!
-          .call();
+      tester.widget<OutlinedButton>(replayButton).onPressed!.call();
       await tester.pump();
       expect(last.seekPositions, contains(Duration.zero));
       expect(last.playCalls, greaterThan(0));
@@ -400,20 +463,38 @@ void main() {
       _invokeIconButton(tester, 'Display mode');
       await tester.pumpAndSettle();
       expect(find.text('Video display mode'), findsOneWidget);
-      await tester.tap(
-        find.byKey(const ValueKey('video-fit-fillCrop')),
-        warnIfMissed: false,
-      );
+      final fillCrop = find.byKey(const ValueKey('video-fit-fillCrop'));
+      await tester.ensureVisible(fillCrop);
+      await tester.pumpAndSettle();
+      await tester.tap(fillCrop);
       await tester.pump();
+      expect(
+        tester
+            .widget<VideoDisplaySurface>(find.byType(VideoDisplaySurface))
+            .mode
+            .fit,
+        VideoDisplayFit.fillCrop,
+      );
+      final wideAspect = find.byKey(
+        const ValueKey('video-aspect-twentyOneNine'),
+      );
       await tester.scrollUntilVisible(
-        find.byKey(const ValueKey('video-aspect-twentyOneNine')),
+        wideAspect,
         240,
         scrollable: find.byType(Scrollable).last,
       );
-      await tester.tap(
-        find.byKey(const ValueKey('video-aspect-twentyOneNine')),
-      );
+      await tester.ensureVisible(wideAspect);
+      await tester.pumpAndSettle();
+      await tester.tap(wideAspect);
       await tester.pump();
+      expect(tester.widget<ListTile>(wideAspect).selected, isTrue);
+      expect(
+        tester
+            .widget<VideoDisplaySurface>(find.byType(VideoDisplaySurface))
+            .mode
+            .aspectPreset,
+        VideoAspectPreset.twentyOneNine,
+      );
 
       expect(engines.created, hasLength(1));
       expect(player.openPositions, hasLength(1));
@@ -426,6 +507,10 @@ void main() {
         240,
         scrollable: find.byType(Scrollable).last,
       );
+      await tester.ensureVisible(
+        find.byKey(const Key('custom-video-aspect-input')),
+      );
+      await tester.pumpAndSettle();
       expect(
         tester
             .widget<TextField>(
@@ -507,6 +592,10 @@ void main() {
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
     await tester.pump();
     expect(_focusedTooltip(tester), 'Display mode');
+    _expectRoundedFocusStyle(
+      tester.widget<IconButton>(_iconButtonForTooltip('Display mode')).style,
+      isA<CircleBorder>(),
+    );
     await tester.sendKeyEvent(LogicalKeyboardKey.select);
     await tester.pumpAndSettle();
     expect(find.text('Video display mode'), findsOneWidget);
@@ -601,6 +690,23 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump();
     },
+  );
+}
+
+void _expectRoundedFocusStyle(ButtonStyle? style, Matcher shape) {
+  expect(style, isNotNull);
+  const idle = <WidgetState>{};
+  const focused = <WidgetState>{WidgetState.focused};
+  expect(style!.shape?.resolve(idle), shape);
+  expect(style.shape?.resolve(focused), shape);
+  final focusRing = style.side?.resolve(focused);
+  expect(focusRing, isNotNull);
+  expect(focusRing!.width, greaterThanOrEqualTo(2));
+  expect(focusRing.color.a, greaterThanOrEqualTo(0.5));
+  expect(focusRing, isNot(style.side?.resolve(idle)));
+  expect(
+    style.backgroundColor?.resolve(focused),
+    isNot(style.backgroundColor?.resolve(idle)),
   );
 }
 

@@ -528,6 +528,9 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
                           onSubtitles: _showSubtitles,
                           onTogglePlayback: _togglePlayback,
                           isTv: widget.isTv,
+                          experimentalEngine:
+                              engine!.kind ==
+                              PlaybackEngineKind.betterPlayerExperimental,
                         ),
                       ),
                     ),
@@ -574,18 +577,16 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
       session!.mediaId,
     )).where((item) => item.episode.id == session!.episode.id).first;
     if (!mounted) return;
-    final chosen = await showModalBottomSheet<EpisodeSourceBinding>(
-      context: context,
-      showDragHandle: true,
+    final chosen = await _showPlayerSheet<EpisodeSourceBinding>(
       builder: (context) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const ListTile(
-              title: Text('Switch source'),
-              subtitle: Text(
-                'Different encodes do not share exact timestamps. A new source starts at its own saved position or 0:00.',
-              ),
+            const _PlayerSheetHeader(
+              title: 'Switch source',
+              icon: Icons.source_rounded,
+              subtitle:
+                  'Different encodes do not share exact timestamps. A new source starts at its own saved position or 0:00.',
             ),
             for (final binding in values.bindings)
               ListTile(
@@ -623,31 +624,46 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
       session!.mediaId,
     );
     if (!mounted) return;
-    final chosen = await showModalBottomSheet<PlaybackEpisodeAvailability>(
-      context: context,
-      showDragHandle: true,
+    final chosen = await _showPlayerSheet<PlaybackEpisodeAvailability>(
       builder: (context) => ListView.builder(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
         itemCount: episodes.length + 1,
         itemBuilder: (context, index) {
-          if (index == 0) return const ListTile(title: Text('Episodes'));
+          if (index == 0) {
+            return _PlayerSheetHeader(
+              title: 'Episodes',
+              icon: Icons.playlist_play_rounded,
+              subtitle: '${episodes.length} episodes · Choose where to go next',
+            );
+          }
           final value = episodes[index - 1];
-          return ListTile(
-            selected: value.episode.id == session!.episode.id,
-            enabled: value.openableBindings.isNotEmpty,
-            leading: Icon(
-              completed.contains(value.episode.id)
-                  ? Icons.check_circle
-                  : Icons.play_circle_outline,
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: ListTile(
+              selected: value.episode.id == session!.episode.id,
+              enabled: value.openableBindings.isNotEmpty,
+              leading: Icon(
+                completed.contains(value.episode.id)
+                    ? Icons.check_circle
+                    : Icons.play_circle_outline,
+              ),
+              title: Text(
+                value.episode.label.rawLabel,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              subtitle: Text(
+                value.openableBindings.isEmpty
+                    ? 'No playable source'
+                    : '${value.playableBindings.length} source(s)',
+              ),
+              onTap: value.openableBindings.isEmpty
+                  ? null
+                  : () => Navigator.pop(context, value),
+              trailing: value.episode.id == session!.episode.id
+                  ? const _PlayerBadge(label: 'Current')
+                  : const Icon(Icons.chevron_right_rounded),
             ),
-            title: Text(value.episode.label.rawLabel),
-            subtitle: Text(
-              value.openableBindings.isEmpty
-                  ? 'No playable source'
-                  : '${value.playableBindings.length} source(s)',
-            ),
-            onTap: value.openableBindings.isEmpty
-                ? null
-                : () => Navigator.pop(context, value),
           );
         },
       ),
@@ -741,17 +757,15 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
   Future<void> _showPreferences() async {
     final values = const [0.75, 1.0, 1.25, 1.5, 2.0];
     var preferences = session!.preferences;
-    final speed = await showModalBottomSheet<double>(
-      context: context,
-      showDragHandle: true,
+    final speed = await _showPlayerSheet<double>(
       builder: (context) => SafeArea(
         child: Wrap(
           children: [
-            const ListTile(
-              title: Text('Playback settings'),
-              subtitle: Text(
-                'This player uses the file’s default audio track. Track selection is shown only when the platform can control it reliably.',
-              ),
+            const _PlayerSheetHeader(
+              title: 'Playback settings',
+              icon: Icons.tune_rounded,
+              subtitle:
+                  'This player uses the file’s default audio track. Track selection is shown only when the platform can control it reliably.',
             ),
             SwitchListTile(
               title: const Text('Play next episode automatically'),
@@ -793,9 +807,7 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
         ? '${mode.customAspectRatio}:1'
         : '';
     String? customError;
-    await showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
+    await _showPlayerSheet<void>(
       isScrollControlled: true,
       builder: (context) => StatefulBuilder(
         builder: (context, updateSheet) {
@@ -814,14 +826,17 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
               child: FocusTraversalGroup(
                 child: ListView(
                   controller: controller,
-                  padding: const EdgeInsets.only(bottom: 24),
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
                   children: [
-                    ListTile(
-                      title: const Text('Video display mode'),
-                      subtitle: const Text(
-                        'Fit and aspect ratio are separate. Auto preserves the video’s original shape.',
-                      ),
-                      trailing: TextButton.icon(
+                    const _PlayerSheetHeader(
+                      title: 'Video display mode',
+                      icon: Icons.aspect_ratio_rounded,
+                      subtitle:
+                          'Fit and aspect ratio are separate. Auto preserves the video’s original shape.',
+                    ),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton.icon(
                         key: const Key('reset-video-display-mode'),
                         autofocus: widget.isTv,
                         onPressed: () => apply(VideoDisplayMode.automatic),
@@ -829,7 +844,7 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
                         label: const Text('Reset to Auto'),
                       ),
                     ),
-                    const Divider(),
+                    const SizedBox(height: 8),
                     const ListTile(title: Text('Fit mode')),
                     for (final value in VideoDisplayFit.values)
                       ListTile(
@@ -843,7 +858,7 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
                         title: Text(videoDisplayFitLabel(value)),
                         onTap: () => apply(mode.withFit(value)),
                       ),
-                    const Divider(),
+                    const SizedBox(height: 16),
                     const ListTile(title: Text('Aspect ratio')),
                     for (final value in VideoAspectPreset.values.where(
                       (value) => value != VideoAspectPreset.custom,
@@ -961,9 +976,7 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
   Future<void> _showAudio() async {
     final player = engine!;
     final tracks = player.state.value.audioTracks;
-    final chosen = await showModalBottomSheet<String>(
-      context: context,
-      showDragHandle: true,
+    final chosen = await _showPlayerSheet<String>(
       builder: (context) => ListView.builder(
         itemCount: tracks.length + 1,
         itemBuilder: (context, index) {
@@ -985,9 +998,7 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
   Future<void> _showSubtitles() async {
     final player = engine!;
     final tracks = player.state.value.subtitleTracks;
-    final chosen = await showModalBottomSheet<String>(
-      context: context,
-      showDragHandle: true,
+    final chosen = await _showPlayerSheet<String>(
       builder: (context) => ListView.builder(
         itemCount: tracks.length + 2,
         itemBuilder: (context, index) {
@@ -1028,6 +1039,257 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
     handledNaturalEnd = false;
     if (mounted) setState(() {});
   }
+
+  Future<T?> _showPlayerSheet<T>({
+    required WidgetBuilder builder,
+    bool isScrollControlled = false,
+  }) => showModalBottomSheet<T>(
+    context: context,
+    showDragHandle: true,
+    isScrollControlled: isScrollControlled,
+    backgroundColor: _playerPanelColor,
+    barrierColor: Colors.black54,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+    ),
+    clipBehavior: Clip.antiAlias,
+    constraints: const BoxConstraints(maxWidth: 720),
+    builder: (context) => _PlayerSheetTheme(child: Builder(builder: builder)),
+  );
+}
+
+const _playerPanelColor = Color(0xFF191E28);
+
+class _PlayerSurface extends StatelessWidget {
+  const _PlayerSurface({
+    required this.child,
+    this.radius = 28,
+    this.padding = EdgeInsets.zero,
+  });
+
+  final Widget child;
+  final double radius;
+  final EdgeInsetsGeometry padding;
+
+  @override
+  Widget build(BuildContext context) => DecoratedBox(
+    decoration: BoxDecoration(
+      color: _playerPanelColor.withValues(alpha: 0.82),
+      borderRadius: BorderRadius.circular(radius),
+      border: Border.all(color: Colors.white.withValues(alpha: 0.09)),
+    ),
+    child: Padding(padding: padding, child: child),
+  );
+}
+
+class _PlayerControlButton extends StatelessWidget {
+  const _PlayerControlButton({
+    required this.tooltip,
+    required this.onPressed,
+    this.icon,
+    this.child,
+    this.size = 48,
+    this.iconSize = 24,
+    this.primary = false,
+    this.autofocus = false,
+  });
+
+  final String tooltip;
+  final VoidCallback? onPressed;
+  final IconData? icon;
+  final Widget? child;
+  final double size;
+  final double iconSize;
+  final bool primary;
+  final bool autofocus;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return IconButton(
+      tooltip: tooltip,
+      onPressed: onPressed,
+      autofocus: autofocus,
+      iconSize: iconSize,
+      style: ButtonStyle(
+        fixedSize: WidgetStatePropertyAll(Size.square(size)),
+        padding: const WidgetStatePropertyAll(EdgeInsets.zero),
+        shape: const WidgetStatePropertyAll(CircleBorder()),
+        side: WidgetStateProperty.resolveWith(
+          (states) => BorderSide(
+            color: states.contains(WidgetState.focused)
+                ? Colors.white
+                : Colors.white.withValues(alpha: primary ? 0.16 : 0.06),
+            width: states.contains(WidgetState.focused) ? 2.5 : 1,
+          ),
+        ),
+        backgroundColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.disabled)) return Colors.white10;
+          if (states.contains(WidgetState.focused)) {
+            return primary ? colors.primaryContainer : Colors.white24;
+          }
+          return primary ? colors.primary : Colors.black.withValues(alpha: 0.2);
+        }),
+        foregroundColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.disabled)) return Colors.white30;
+          if (!primary) return Colors.white;
+          return states.contains(WidgetState.focused)
+              ? colors.onPrimaryContainer
+              : colors.onPrimary;
+        }),
+        overlayColor: WidgetStatePropertyAll(
+          Colors.white.withValues(alpha: 0.12),
+        ),
+        elevation: WidgetStatePropertyAll(primary ? 4 : 0),
+        shadowColor: const WidgetStatePropertyAll(Colors.black54),
+        animationDuration: const Duration(milliseconds: 120),
+      ),
+      icon: child ?? Icon(icon),
+    );
+  }
+}
+
+class _SeekGlyph extends StatelessWidget {
+  const _SeekGlyph({required this.forward, required this.step});
+  final bool forward;
+  final int step;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Icon(forward ? Icons.forward_rounded : Icons.replay_rounded, size: 20),
+      Text(
+        '${forward ? '+' : '-'}${step}s',
+        style: const TextStyle(
+          fontSize: 11,
+          height: 1.15,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    ],
+  );
+}
+
+class _PlayerBadge extends StatelessWidget {
+  const _PlayerBadge({required this.label});
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => DecoratedBox(
+    decoration: BoxDecoration(
+      color: Colors.white.withValues(alpha: 0.1),
+      borderRadius: BorderRadius.circular(32),
+    ),
+    child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      child: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(
+          color: Colors.white70,
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    ),
+  );
+}
+
+class _PlayerSheetHeader extends StatelessWidget {
+  const _PlayerSheetHeader({
+    required this.title,
+    required this.icon,
+    required this.subtitle,
+  });
+  final String title;
+  final IconData icon;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(icon, color: Theme.of(context).colorScheme.primary),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Text(
+          subtitle,
+          style: const TextStyle(color: Colors.white70, height: 1.4),
+        ),
+      ],
+    ),
+  );
+}
+
+class _PlayerSheetTheme extends StatelessWidget {
+  const _PlayerSheetTheme({required this.child});
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final base = Theme.of(context);
+    final colors = ColorScheme.fromSeed(
+      seedColor: base.colorScheme.primary,
+      brightness: Brightness.dark,
+      surface: _playerPanelColor,
+    );
+    return Theme(
+      data: base.copyWith(
+        colorScheme: colors,
+        focusColor: Colors.white.withValues(alpha: 0.18),
+        textTheme: base.textTheme.apply(
+          bodyColor: Colors.white,
+          displayColor: Colors.white,
+        ),
+        listTileTheme: ListTileThemeData(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 4,
+          ),
+          textColor: Colors.white,
+          iconColor: Colors.white70,
+          selectedColor: colors.primary,
+          selectedTileColor: colors.primary.withValues(alpha: 0.12),
+        ),
+        textButtonTheme: TextButtonThemeData(
+          style: TextButton.styleFrom(shape: const StadiumBorder()),
+        ),
+        filledButtonTheme: FilledButtonThemeData(
+          style: FilledButton.styleFrom(shape: const StadiumBorder()),
+        ),
+        inputDecorationTheme: InputDecorationThemeData(
+          filled: true,
+          fillColor: Colors.white.withValues(alpha: 0.06),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(18)),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 16,
+          ),
+        ),
+      ),
+      child: child,
+    );
+  }
 }
 
 class _Controls extends StatelessWidget {
@@ -1049,6 +1311,7 @@ class _Controls extends StatelessWidget {
     required this.onSubtitles,
     required this.onTogglePlayback,
     required this.isTv,
+    required this.experimentalEngine,
   });
   final PlaybackSession session;
   final PlaybackEngineState state;
@@ -1067,139 +1330,254 @@ class _Controls extends StatelessWidget {
   final Future<void> Function() onSubtitles;
   final Future<void> Function() onTogglePlayback;
   final bool isTv;
+  final bool experimentalEngine;
 
   @override
   Widget build(BuildContext context) {
     final step = session.preferences.seekStepSeconds;
-    return ColoredBox(
-      color: Colors.black45,
+    final colors = Theme.of(context).colorScheme;
+    return DecoratedBox(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xB3000000), Color(0x18000000), Color(0xB3000000)],
+          stops: [0, 0.48, 1],
+        ),
+      ),
       child: SafeArea(
-        child: Column(
-          children: [
-            Row(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final compact = constraints.maxHeight < 360;
+            final inset = isTv && !compact ? 24.0 : 12.0;
+            final title = Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    '${session.episode.label.rawLabel} · ${session.manifest.sourceName}',
-                    style: const TextStyle(color: Colors.white),
-                  ),
-                ),
-                IconButton(
-                  tooltip: 'Episodes',
-                  onPressed: onEpisodes,
-                  icon: const Icon(Icons.playlist_play, color: Colors.white),
-                ),
-                IconButton(
-                  tooltip: 'Source',
-                  onPressed: onSources,
-                  icon: const Icon(Icons.source, color: Colors.white),
-                ),
-                if (shouldShowAudioControl(capabilities, state))
-                  IconButton(
-                    tooltip: 'Audio',
-                    onPressed: onAudio,
-                    icon: const Icon(Icons.audiotrack, color: Colors.white),
-                  ),
-                if (shouldShowSubtitleControl(capabilities, state))
-                  IconButton(
-                    tooltip: 'Subtitles',
-                    onPressed: onSubtitles,
-                    icon: const Icon(Icons.subtitles, color: Colors.white),
-                  ),
-                IconButton(
-                  tooltip: 'Display mode',
-                  onPressed: onDisplayMode,
-                  icon: const Icon(Icons.aspect_ratio, color: Colors.white),
-                ),
-                IconButton(
-                  tooltip: 'Settings',
-                  onPressed: onPreferences,
-                  icon: const Icon(Icons.settings, color: Colors.white),
-                ),
-              ],
-            ),
-            const Spacer(),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                IconButton(
-                  tooltip: 'Previous episode',
-                  onPressed: hasPrevious ? () => onAdjacent(-1) : null,
-                  icon: Icon(
-                    Icons.skip_previous,
-                    color: hasPrevious ? Colors.white : Colors.white38,
-                  ),
-                ),
-                IconButton(
-                  tooltip: 'Back $step seconds',
-                  onPressed: () => onSeek(Duration(seconds: -step)),
-                  icon: const Icon(Icons.replay_10, color: Colors.white),
-                ),
-                IconButton.filled(
-                  autofocus: isTv,
-                  tooltip: state.isPlaying ? 'Pause' : 'Play',
-                  onPressed: onTogglePlayback,
-                  iconSize: isTv ? 42 : 24,
-                  icon: Icon(state.isPlaying ? Icons.pause : Icons.play_arrow),
-                ),
-                IconButton(
-                  tooltip: 'Forward $step seconds',
-                  onPressed: () => onSeek(Duration(seconds: step)),
-                  icon: const Icon(Icons.forward_10, color: Colors.white),
-                ),
-                IconButton(
-                  tooltip: 'Next episode',
-                  onPressed: hasNext ? () => onAdjacent(1) : null,
-                  icon: Icon(
-                    Icons.skip_next,
-                    color: hasNext ? Colors.white : Colors.white38,
-                  ),
-                ),
-              ],
-            ),
-            const Spacer(),
-            Row(
-              children: [
-                const SizedBox(width: 12),
                 Text(
-                  _clock(state.position),
-                  style: const TextStyle(color: Colors.white),
-                ),
-                Expanded(
-                  child: Slider(
-                    value: state.duration.inMilliseconds == 0
-                        ? 0
-                        : (state.position.inMilliseconds /
-                                  state.duration.inMilliseconds)
-                              .clamp(0, 1),
-                    onChanged: capabilities.canSeek
-                        ? (value) => onSeek(
-                            Duration(
-                                  milliseconds:
-                                      (state.duration.inMilliseconds * value)
-                                          .round(),
-                                ) -
-                                state.position,
-                          )
-                        : null,
-                  ),
-                ),
-                Text(
-                  _clock(state.duration),
-                  style: const TextStyle(color: Colors.white),
-                ),
-                IconButton(
-                  tooltip: fullscreen ? 'Exit fullscreen' : 'Fullscreen',
-                  onPressed: onToggleFullscreen,
-                  icon: Icon(
-                    fullscreen ? Icons.fullscreen_exit : Icons.fullscreen,
+                  session.episode.label.rawLabel,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
                     color: Colors.white,
+                    fontSize: isTv ? 22 : 18,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.3,
                   ),
                 ),
+                const SizedBox(height: 3),
+                Text(
+                  session.manifest.sourceName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: Colors.white70, fontSize: 13),
+                ),
+                if (experimentalEngine) ...[
+                  const SizedBox(height: 6),
+                  const _PlayerBadge(label: 'Better Player · Experimental'),
+                ],
               ],
-            ),
-          ],
+            );
+            final tools = _PlayerSurface(
+              radius: 32,
+              padding: const EdgeInsets.all(4),
+              child: Wrap(
+                spacing: 2,
+                children: [
+                  _PlayerControlButton(
+                    tooltip: 'Episodes',
+                    onPressed: onEpisodes,
+                    icon: Icons.playlist_play_rounded,
+                  ),
+                  _PlayerControlButton(
+                    tooltip: 'Source',
+                    onPressed: onSources,
+                    icon: Icons.source_rounded,
+                  ),
+                  if (shouldShowAudioControl(capabilities, state))
+                    _PlayerControlButton(
+                      tooltip: 'Audio',
+                      onPressed: onAudio,
+                      icon: Icons.audiotrack_rounded,
+                    ),
+                  if (shouldShowSubtitleControl(capabilities, state))
+                    _PlayerControlButton(
+                      tooltip: 'Subtitles',
+                      onPressed: onSubtitles,
+                      icon: Icons.subtitles_rounded,
+                    ),
+                  _PlayerControlButton(
+                    tooltip: 'Display mode',
+                    onPressed: onDisplayMode,
+                    icon: Icons.aspect_ratio_rounded,
+                  ),
+                  _PlayerControlButton(
+                    tooltip: 'Settings',
+                    onPressed: onPreferences,
+                    icon: Icons.tune_rounded,
+                  ),
+                ],
+              ),
+            );
+            return Padding(
+              padding: EdgeInsets.all(inset),
+              child: Column(
+                children: [
+                  if (constraints.maxWidth < 560)
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        title,
+                        const SizedBox(height: 10),
+                        Align(alignment: Alignment.centerRight, child: tools),
+                      ],
+                    )
+                  else
+                    Row(
+                      children: [
+                        Expanded(child: title),
+                        const SizedBox(width: 16),
+                        tools,
+                      ],
+                    ),
+                  const Spacer(),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      spacing: constraints.maxWidth < 360 ? 4 : 8,
+                      children: [
+                        _PlayerControlButton(
+                          tooltip: 'Previous episode',
+                          onPressed: hasPrevious ? () => onAdjacent(-1) : null,
+                          icon: Icons.skip_previous_rounded,
+                          iconSize: 28,
+                        ),
+                        _PlayerControlButton(
+                          tooltip: 'Back $step seconds',
+                          onPressed: () => onSeek(Duration(seconds: -step)),
+                          size: isTv && !compact ? 64 : 52,
+                          child: _SeekGlyph(forward: false, step: step),
+                        ),
+                        _PlayerControlButton(
+                          autofocus: isTv,
+                          tooltip: state.isPlaying ? 'Pause' : 'Play',
+                          onPressed: onTogglePlayback,
+                          primary: true,
+                          size: isTv ? (compact ? 80 : 96) : 72,
+                          iconSize: isTv ? 44 : 36,
+                          icon: state.isPlaying
+                              ? Icons.pause_rounded
+                              : Icons.play_arrow_rounded,
+                        ),
+                        _PlayerControlButton(
+                          tooltip: 'Forward $step seconds',
+                          onPressed: () => onSeek(Duration(seconds: step)),
+                          size: isTv && !compact ? 64 : 52,
+                          child: _SeekGlyph(forward: true, step: step),
+                        ),
+                        _PlayerControlButton(
+                          tooltip: 'Next episode',
+                          onPressed: hasNext ? () => onAdjacent(1) : null,
+                          icon: Icons.skip_next_rounded,
+                          iconSize: 28,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Spacer(),
+                  _PlayerSurface(
+                    radius: 28,
+                    padding: const EdgeInsets.fromLTRB(12, 4, 6, 8),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              SliderTheme(
+                                data: SliderTheme.of(context).copyWith(
+                                  trackHeight: 4,
+                                  activeTrackColor: colors.primary,
+                                  inactiveTrackColor: Colors.white24,
+                                  thumbColor: colors.primary,
+                                  thumbShape: const RoundSliderThumbShape(
+                                    enabledThumbRadius: 7,
+                                  ),
+                                  overlayShape: const RoundSliderOverlayShape(
+                                    overlayRadius: 16,
+                                  ),
+                                ),
+                                child: Slider(
+                                  value: state.duration.inMilliseconds == 0
+                                      ? 0
+                                      : (state.position.inMilliseconds /
+                                                state.duration.inMilliseconds)
+                                            .clamp(0, 1),
+                                  onChanged: capabilities.canSeek
+                                      ? (value) => onSeek(
+                                          Duration(
+                                                milliseconds:
+                                                    (state
+                                                                .duration
+                                                                .inMilliseconds *
+                                                            value)
+                                                        .round(),
+                                              ) -
+                                              state.position,
+                                        )
+                                      : null,
+                                ),
+                              ),
+                              Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                ),
+                                child: Row(
+                                  children: [
+                                    Text(
+                                      _clock(state.position),
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w600,
+                                        fontFeatures: [
+                                          FontFeature.tabularFigures(),
+                                        ],
+                                      ),
+                                    ),
+                                    const Spacer(),
+                                    Text(
+                                      _clock(state.duration),
+                                      style: const TextStyle(
+                                        color: Colors.white70,
+                                        fontFeatures: [
+                                          FontFeature.tabularFigures(),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        _PlayerControlButton(
+                          tooltip: fullscreen
+                              ? 'Exit fullscreen'
+                              : 'Fullscreen',
+                          onPressed: onToggleFullscreen,
+                          icon: fullscreen
+                              ? Icons.fullscreen_exit_rounded
+                              : Icons.fullscreen_rounded,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
         ),
       ),
     );
@@ -1256,47 +1634,105 @@ class _CompletionOverlay extends StatelessWidget {
   final Future<void> Function() onNext;
 
   @override
-  Widget build(BuildContext context) => ColoredBox(
-    color: Colors.black87,
-    child: Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Text(
-            'Episode complete',
-            style: TextStyle(color: Colors.white, fontSize: 28),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            hasNext
-                ? 'Ready for the next episode?'
-                : 'End of available episodes',
-            style: const TextStyle(color: Colors.white70),
-          ),
-          const SizedBox(height: 24),
-          FocusTraversalGroup(
-            child: Wrap(
-              spacing: 16,
-              children: [
-                OutlinedButton.icon(
-                  onPressed: onReplay,
-                  icon: const Icon(Icons.replay),
-                  label: const Text('Replay'),
-                ),
-                if (hasNext)
-                  FilledButton.icon(
-                    autofocus: isTv,
-                    onPressed: onNext,
-                    icon: const Icon(Icons.skip_next),
-                    label: const Text('Next Episode'),
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    ButtonStyle actionStyle({required bool primary}) => ButtonStyle(
+      shape: const WidgetStatePropertyAll(StadiumBorder()),
+      minimumSize: WidgetStatePropertyAll(
+        Size(primary ? 168 : 120, isTv ? 56 : 48),
+      ),
+      padding: const WidgetStatePropertyAll(
+        EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+      ),
+      foregroundColor: WidgetStatePropertyAll(
+        primary ? colors.onPrimary : Colors.white,
+      ),
+      backgroundColor: WidgetStateProperty.resolveWith(
+        (states) => states.contains(WidgetState.focused)
+            ? (primary
+                  ? Color.alphaBlend(Colors.white24, colors.primary)
+                  : Colors.white24)
+            : (primary ? colors.primary : Colors.transparent),
+      ),
+      side: WidgetStateProperty.resolveWith(
+        (states) => BorderSide(
+          color: states.contains(WidgetState.focused)
+              ? Colors.white
+              : Colors.white24,
+          width: states.contains(WidgetState.focused) ? 2.5 : 1,
+        ),
+      ),
+    );
+
+    return ColoredBox(
+      color: Colors.black54,
+      child: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 520),
+            child: _PlayerSurface(
+              radius: 32,
+              padding: EdgeInsets.all(isTv ? 28 : 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.check_circle_rounded,
+                    color: colors.primary,
+                    size: 40,
                   ),
-              ],
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Episode complete',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 26,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -0.5,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    hasNext
+                        ? 'Ready for the next episode?'
+                        : 'End of available episodes',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.white70, height: 1.4),
+                  ),
+                  const SizedBox(height: 24),
+                  FocusTraversalGroup(
+                    child: Wrap(
+                      alignment: WrapAlignment.center,
+                      spacing: 12,
+                      runSpacing: 12,
+                      children: [
+                        OutlinedButton.icon(
+                          style: actionStyle(primary: false),
+                          onPressed: onReplay,
+                          icon: const Icon(Icons.replay_rounded),
+                          label: const Text('Replay'),
+                        ),
+                        if (hasNext)
+                          FilledButton.icon(
+                            style: actionStyle(primary: true),
+                            autofocus: isTv,
+                            onPressed: onNext,
+                            icon: const Icon(Icons.skip_next_rounded),
+                            label: const Text('Next Episode'),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-        ],
+        ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 String _playbackErrorMessage(Object error) => switch (error) {
