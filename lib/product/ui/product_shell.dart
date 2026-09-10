@@ -6,8 +6,10 @@ import '../../canonical/domain/user_state.dart';
 import '../product_controller.dart';
 import '../product_models.dart';
 import 'design_system.dart';
+import 'product_navigation.dart';
 import 'media_details_screen.dart';
 import 'local_media_screen.dart';
+import 'settings_visuals.dart';
 import '../../app/app_preferences.dart';
 import '../smart_resume.dart';
 import '../../app/presentation_mode.dart';
@@ -59,24 +61,6 @@ class ProductShell extends StatelessWidget {
             onAppearanceChanged: onAppearanceChanged,
           ),
         ];
-        const destinations = [
-          NavigationDestination(
-            icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home),
-            label: 'Home',
-          ),
-          NavigationDestination(icon: Icon(Icons.search), label: 'Search'),
-          NavigationDestination(
-            icon: Icon(Icons.bookmarks_outlined),
-            selectedIcon: Icon(Icons.bookmarks),
-            label: 'Library',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.settings_outlined),
-            selectedIcon: Icon(Icons.settings),
-            label: 'Settings',
-          ),
-        ];
         final content = SafeArea(
           child: IndexedStack(index: controller.selectedTab, children: pages),
         );
@@ -87,34 +71,13 @@ class ProductShell extends StatelessWidget {
                 body: Row(
                   children: [
                     SafeArea(
-                      child: NavigationRail(
-                        labelType: NavigationRailLabelType.all,
+                      child: ZankaNavigation(
+                        key: const Key('product-primary-navigation'),
+                        vertical: true,
                         selectedIndex: controller.selectedTab,
-                        onDestinationSelected: controller.selectTab,
-                        destinations: const [
-                          NavigationRailDestination(
-                            icon: Icon(Icons.home_outlined),
-                            selectedIcon: Icon(Icons.home),
-                            label: Text('Home'),
-                          ),
-                          NavigationRailDestination(
-                            icon: Icon(Icons.search),
-                            label: Text('Search'),
-                          ),
-                          NavigationRailDestination(
-                            icon: Icon(Icons.bookmarks_outlined),
-                            selectedIcon: Icon(Icons.bookmarks),
-                            label: Text('Library'),
-                          ),
-                          NavigationRailDestination(
-                            icon: Icon(Icons.settings_outlined),
-                            selectedIcon: Icon(Icons.settings),
-                            label: Text('Settings'),
-                          ),
-                        ],
+                        onSelected: controller.selectTab,
                       ),
                     ),
-                    const VerticalDivider(width: 1),
                     Expanded(child: content),
                   ],
                 ),
@@ -122,10 +85,10 @@ class ProductShell extends StatelessWidget {
             }
             return Scaffold(
               body: content,
-              bottomNavigationBar: NavigationBar(
+              bottomNavigationBar: ZankaNavigation(
+                key: const Key('product-primary-navigation'),
                 selectedIndex: controller.selectedTab,
-                onDestinationSelected: controller.selectTab,
-                destinations: destinations,
+                onSelected: controller.selectTab,
               ),
             );
           },
@@ -148,15 +111,19 @@ class HomeScreen extends StatelessWidget {
     child: CustomScrollView(
       key: const PageStorageKey('home-scroll'),
       slivers: [
-        SliverAppBar.large(
-          title: const Text('Zanka'),
-          actions: [
-            IconButton(
-              tooltip: 'Search',
-              onPressed: () => controller.selectTab(1),
-              icon: const Icon(Icons.search),
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 28, 24, 12),
+            child: ZankaPageHeading(
+              eyebrow: 'Your next story',
+              title: 'Zanka',
+              trailing: IconButton.filledTonal(
+                tooltip: 'Search',
+                onPressed: () => controller.selectTab(1),
+                icon: const Icon(Icons.search),
+              ),
             ),
-          ],
+          ),
         ),
         if (controller.loadingLocal)
           const SliverToBoxAdapter(child: LinearProgressIndicator())
@@ -614,199 +581,286 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _developerToolsEnabled = false;
 
   ProductController get controller => widget.controller;
-  WidgetBuilder get developerBuilder => widget.developerBuilder;
-  WidgetBuilder get aboutBuilder => widget.aboutBuilder;
-  AppPreferences get appearance => widget.appearance;
-  Future<void> Function(ZankaThemeMode, ZankaAccent) get onAppearanceChanged =>
-      widget.onAppearanceChanged;
 
-  @override
-  Widget build(BuildContext context) => CustomScrollView(
-    key: const PageStorageKey('settings-scroll'),
-    slivers: [
-      const SliverAppBar.large(title: Text('Settings')),
-      SliverToBoxAdapter(
-        child: Padding(
-          padding: const EdgeInsets.all(ZankaSpace.md),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Appearance', style: Theme.of(context).textTheme.titleLarge),
-              SegmentedButton<ZankaThemeMode>(
-                segments: const [
-                  ButtonSegment(
-                    value: ZankaThemeMode.system,
-                    label: Text('System'),
-                    icon: Icon(Icons.brightness_auto),
-                  ),
-                  ButtonSegment(
-                    value: ZankaThemeMode.light,
-                    label: Text('Light'),
-                    icon: Icon(Icons.light_mode_outlined),
-                  ),
-                  ButtonSegment(
-                    value: ZankaThemeMode.dark,
-                    label: Text('Dark'),
-                    icon: Icon(Icons.dark_mode_outlined),
-                  ),
-                ],
-                selected: {appearance.themeMode},
-                onSelectionChanged: (value) =>
-                    onAppearanceChanged(value.first, appearance.accent),
-              ),
-              const SizedBox(height: ZankaSpace.md),
-              Text(
-                'Accent color',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              Wrap(
-                spacing: ZankaSpace.sm,
-                runSpacing: ZankaSpace.sm,
-                children: [
-                  for (final accent in ZankaAccent.values)
-                    ChoiceChip(
-                      key: ValueKey('accent-${accent.name}'),
-                      avatar: CircleAvatar(
-                        backgroundColor: zankaAccentColor(accent),
+  void _openCategory(String name, WidgetBuilder builder) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        settings: RouteSettings(name: '/settings/$name'),
+        builder: builder,
+      ),
+    );
+  }
+
+  Widget _sources() => SettingsDetailPage(
+    title: 'Sources',
+    description: 'Choose where discovery begins.',
+    child: AnimatedBuilder(
+      animation: controller,
+      builder: (context, _) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final provider in controller.providers)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 20),
+              child: MergeSemantics(
+                child: Row(
+                  children: [
+                    const Icon(Icons.travel_explore_outlined),
+                    const SizedBox(width: 18),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            provider.displayName,
+                            style: Theme.of(context).textTheme.titleLarge,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '${provider.mediaKind.name} · ${provider.baseUrl.host}',
+                            style: Theme.of(context).textTheme.bodyMedium,
+                          ),
+                        ],
                       ),
-                      label: Text(_accentLabel(accent)),
-                      selected: appearance.accent == accent,
-                      onSelected: (_) =>
-                          onAppearanceChanged(appearance.themeMode, accent),
                     ),
-                ],
-              ),
-              const SizedBox(height: ZankaSpace.lg),
-              Text('Sources', style: Theme.of(context).textTheme.titleLarge),
-              ...controller.providers.map(
-                (provider) => SwitchListTile(
-                  key: ValueKey('setting-provider-${provider.id.value}'),
-                  title: Text(provider.displayName),
-                  subtitle: Text(
-                    '${provider.mediaKind.name} · ${provider.baseUrl.host}',
-                  ),
-                  value: provider.enabled,
-                  onChanged: (value) =>
-                      controller.setProviderEnabled(provider.id, value),
+                    const SizedBox(width: 12),
+                    Switch(
+                      key: ValueKey('setting-provider-${provider.id.value}'),
+                      value: provider.enabled,
+                      onChanged: (value) =>
+                          controller.setProviderEnabled(provider.id, value),
+                    ),
+                  ],
                 ),
               ),
-              const ListTile(
-                leading: Icon(Icons.low_priority),
-                title: Text('Source fallback'),
-                subtitle: Text(
+            ),
+          const SizedBox(height: 22),
+          ZankaSurface(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Source fallback',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 8),
+                const Text(
                   'Per-media preference first, then available sources in stable order.',
                 ),
-              ),
-              ListTile(
-                key: const Key('install-reader-sample'),
-                leading: const Icon(Icons.menu_book_outlined),
-                title: const Text('Install offline reader sample'),
-                subtitle: const Text(
-                  'Generated local folder and CBZ chapters for lawful, deterministic reader testing.',
-                ),
-                trailing: const Icon(Icons.download_for_offline_outlined),
-                onTap: controller.sampleInstaller == null
-                    ? null
-                    : () async {
-                        final id = await controller.installSampleManga();
-                        if (!context.mounted || id == null) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Offline reader sample installed.'),
-                          ),
-                        );
-                        await _openDetails(context, controller, id);
-                      },
-              ),
-              ListTile(
-                key: const Key('install-player-sample'),
-                leading: const Icon(Icons.ondemand_video_outlined),
-                title: const Text('Install offline player sample'),
-                subtitle: const Text(
-                  'Generated local MP4 episodes with alternate encodes for lawful playback testing.',
-                ),
-                trailing: const Icon(Icons.download_for_offline_outlined),
-                onTap: controller.sampleAnimeInstaller == null
-                    ? null
-                    : () async {
-                        final id = await controller.installSampleAnime();
-                        if (!context.mounted || id == null) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Offline player sample installed.'),
-                          ),
-                        );
-                        await _openDetails(context, controller, id);
-                      },
-              ),
-              const SizedBox(height: ZankaSpace.lg),
-              ListTile(
-                key: const Key('open-local-media'),
-                leading: const Icon(Icons.folder_copy_outlined),
-                title: const Text('Local media'),
-                subtitle: const Text(
-                  'Import, repair, remove, inspect storage, backup and restore.',
-                ),
-                trailing: const Icon(Icons.chevron_right),
-                onTap:
-                    controller.localLibrary == null || controller.backup == null
-                    ? null
-                    : () => Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          settings: const RouteSettings(
-                            name: '/settings/local-media',
-                          ),
-                          builder: (_) =>
-                              LocalMediaScreen(controller: controller),
+              ],
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+
+  Widget _samples() => SettingsDetailPage(
+    title: 'Offline samples',
+    description: 'Try reading and watching with generated local content.',
+    child: Column(
+      children: [
+        SettingsAction(
+          key: const Key('install-reader-sample'),
+          icon: Icons.menu_book_outlined,
+          title: 'Install offline reader sample',
+          description: 'Local folder and CBZ chapters. No connection needed.',
+          onPressed: controller.sampleInstaller == null
+              ? null
+              : () async {
+                  final id = await controller.installSampleManga();
+                  if (!mounted || id == null) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Offline reader sample installed.'),
+                    ),
+                  );
+                  await _openDetails(context, controller, id);
+                },
+        ),
+        const SizedBox(height: 12),
+        SettingsAction(
+          key: const Key('install-player-sample'),
+          icon: Icons.ondemand_video_outlined,
+          title: 'Install offline player sample',
+          description: 'Local MP4 episodes, with alternate encodes to try.',
+          onPressed: controller.sampleAnimeInstaller == null
+              ? null
+              : () async {
+                  final id = await controller.installSampleAnime();
+                  if (!mounted || id == null) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Offline player sample installed.'),
+                    ),
+                  );
+                  await _openDetails(context, controller, id);
+                },
+        ),
+      ],
+    ),
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return CustomScrollView(
+      key: const PageStorageKey('settings-scroll'),
+      slivers: [
+        SliverToBoxAdapter(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 980),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(24, 32, 24, 28),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const ZankaPageHeading(
+                      eyebrow: 'MAKE IT YOURS',
+                      title: 'Settings',
+                      description: 'Your space. Your sources. Your pace.',
+                    ),
+                    const SizedBox(height: 28),
+                    SettingsCategoryPanel(
+                      key: const Key('settings-appearance'),
+                      title: 'Appearance',
+                      description:
+                          'Light, shade and a color that feels like you.',
+                      icon: Icons.contrast_rounded,
+                      emphasis: true,
+                      onPressed: () => _openCategory(
+                        'appearance',
+                        (_) => AppearanceSettingsPage(
+                          appearance: widget.appearance,
+                          onAppearanceChanged: widget.onAppearanceChanged,
                         ),
                       ),
-              ),
-              Text('About', style: Theme.of(context).textTheme.titleLarge),
-              ListTile(
-                key: const Key('open-about'),
-                leading: Icon(Icons.info_outline),
-                title: Text('Zanka no Tachi'),
-                subtitle: Text(
-                  'About, help, privacy, licenses and local diagnostics.',
-                ),
-                trailing: const Icon(Icons.chevron_right),
-                onLongPress: () {
-                  setState(() => _developerToolsEnabled = true);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Developer tools enabled.')),
-                  );
-                },
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    settings: const RouteSettings(name: '/settings/about'),
-                    builder: aboutBuilder,
-                  ),
-                ),
-              ),
-              if (_developerToolsEnabled) ...[
-                const Divider(),
-                ListTile(
-                  key: const Key('open-developer-tools'),
-                  leading: const Icon(Icons.developer_mode),
-                  title: const Text('Developer tools'),
-                  subtitle: const Text('Source and adapter diagnostics.'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      settings: const RouteSettings(
-                        name: '/settings/developer',
+                      detail: Row(
+                        children: [
+                          for (final accent in ZankaAccent.values)
+                            Padding(
+                              padding: const EdgeInsets.only(right: 8),
+                              child: Container(
+                                width: 16,
+                                height: 16,
+                                decoration: BoxDecoration(
+                                  color: zankaAccentColor(accent),
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
-                      builder: developerBuilder,
                     ),
-                  ),
+                    const SizedBox(height: 16),
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        final wide = constraints.maxWidth >= 520;
+                        final width = wide
+                            ? (constraints.maxWidth - 16) / 2
+                            : constraints.maxWidth;
+                        return Wrap(
+                          spacing: 16,
+                          runSpacing: 16,
+                          children: [
+                            SizedBox(
+                              width: width,
+                              child: SettingsCategoryPanel(
+                                key: const Key('settings-sources'),
+                                title: 'Sources',
+                                description:
+                                    '${controller.providers.where((provider) => provider.enabled).length} enabled · discovery & availability',
+                                icon: Icons.travel_explore_rounded,
+                                onPressed: () =>
+                                    _openCategory('sources', (_) => _sources()),
+                              ),
+                            ),
+                            SizedBox(
+                              width: width,
+                              child: SettingsCategoryPanel(
+                                key: const Key('open-local-media'),
+                                title: 'Local media',
+                                description:
+                                    'Import, repair, storage & backup.',
+                                icon: Icons.folder_copy_outlined,
+                                onPressed:
+                                    controller.localLibrary == null ||
+                                        controller.backup == null
+                                    ? null
+                                    : () => _openCategory(
+                                        'local-media',
+                                        (_) => LocalMediaScreen(
+                                          controller: controller,
+                                        ),
+                                      ),
+                              ),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 28),
+                    Text(
+                      'EXPLORE & SUPPORT',
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        letterSpacing: 1.5,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    SettingsAction(
+                      key: const Key('settings-samples'),
+                      icon: Icons.offline_bolt_outlined,
+                      title: 'Offline samples',
+                      description: 'A ready-to-read, ready-to-watch first try.',
+                      onPressed: () =>
+                          _openCategory('samples', (_) => _samples()),
+                    ),
+                    SettingsAction(
+                      key: const Key('open-about'),
+                      icon: Icons.info_outline_rounded,
+                      title: 'Zanka no Tachi',
+                      description:
+                          'About, help, privacy, licenses and local diagnostics.',
+                      onPressed: () =>
+                          _openCategory('about', widget.aboutBuilder),
+                      onLongPress: () {
+                        setState(() => _developerToolsEnabled = true);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Developer tools enabled.'),
+                          ),
+                        );
+                      },
+                    ),
+                    if (_developerToolsEnabled) ...[
+                      const SizedBox(height: 20),
+                      Text(
+                        'ADVANCED',
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          letterSpacing: 1.5,
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      SettingsAction(
+                        key: const Key('open-developer-tools'),
+                        icon: Icons.developer_mode_rounded,
+                        title: 'Developer tools',
+                        description: 'Source and adapter diagnostics.',
+                        onPressed: () =>
+                            _openCategory('developer', widget.developerBuilder),
+                      ),
+                    ],
+                  ],
                 ),
-              ],
-            ],
+              ),
+            ),
           ),
         ),
-      ),
-    ],
-  );
+      ],
+    );
+  }
 }
 
 class _HorizontalSummaries extends StatelessWidget {
@@ -1077,13 +1131,3 @@ String _searchMediaLabel(ProductSearchResult result) {
     CanonicalAnime(:final format) => '${format.name} · ${media.status.name}',
   };
 }
-
-String _accentLabel(ZankaAccent accent) => switch (accent) {
-  ZankaAccent.defaultRed => 'Default',
-  ZankaAccent.orange => 'Orange',
-  ZankaAccent.green => 'Green',
-  ZankaAccent.teal => 'Teal',
-  ZankaAccent.blue => 'Blue',
-  ZankaAccent.indigo => 'Indigo',
-  ZankaAccent.purple => 'Purple',
-};

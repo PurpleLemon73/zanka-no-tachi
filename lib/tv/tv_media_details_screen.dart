@@ -77,7 +77,8 @@ class _TvMediaDetailsScreenState extends State<TvMediaDetailsScreen> {
                   slivers: [
                     SliverAppBar(
                       pinned: true,
-                      title: Text(value.summary.media.title.value),
+                      title: const Text('Details'),
+                      surfaceTintColor: Colors.transparent,
                     ),
                     SliverPadding(
                       padding: const EdgeInsets.fromLTRB(
@@ -254,22 +255,62 @@ class _TvDetailsHero extends StatelessWidget {
   Widget build(BuildContext context) {
     final media = details.summary.media;
     final target = details.smartResume;
-    return SizedBox(
-      height: 330,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return ClipRRect(
+      key: const Key('tv-details-artwork-hero'),
+      borderRadius: BorderRadius.circular(28),
+      child: Stack(
         children: [
-          CoverArt(locator: media.coverLocator, width: 210, height: 310),
-          const SizedBox(width: 34),
-          Expanded(
+          Positioned.fill(
+            child: ExcludeSemantics(
+              child: CoverArt(
+                locator: media.coverLocator,
+                width: double.infinity,
+                height: double.infinity,
+              ),
+            ),
+          ),
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                  stops: const [0, .55, 1],
+                  colors: [
+                    scheme.surfaceContainerLow,
+                    scheme.surfaceContainerLow.withValues(alpha: .94),
+                    scheme.surfaceContainerLow.withValues(alpha: .6),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(32),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
+                  media is CanonicalAnime
+                      ? 'ANIME / IN FOCUS'
+                      : 'MANGA / IN FOCUS',
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    letterSpacing: 2,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Text(
                   media.title.value,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.displaySmall,
+                  style: theme.textTheme.displaySmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -1,
+                    height: 1.05,
+                  ),
                 ),
                 const SizedBox(height: 10),
                 Text(
@@ -279,14 +320,19 @@ class _TvDetailsHero extends StatelessWidget {
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
                 const SizedBox(height: 12),
-                Text(
-                  media.description?.value ?? 'No description available.',
-                  maxLines: 4,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodyLarge,
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 780),
+                  child: Text(
+                    media.description?.value ?? 'No description available.',
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodyLarge?.copyWith(height: 1.5),
+                  ),
                 ),
-                const Spacer(),
-                Row(
+                const SizedBox(height: 24),
+                Wrap(
+                  spacing: 18,
+                  runSpacing: 16,
                   children: [
                     SizedBox(
                       width: 330,
@@ -295,31 +341,40 @@ class _TvDetailsHero extends StatelessWidget {
                         autofocus: autofocusResume,
                         onPressed: target?.hasAction == true ? onResume : null,
                         semanticLabel: target?.label ?? 'Currently unavailable',
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 22,
-                            vertical: 16,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: scheme.primaryContainer,
+                            borderRadius: BorderRadius.circular(16),
                           ),
-                          child: Row(
-                            children: [
-                              Icon(
-                                target?.action == SmartResumeAction.completed
-                                    ? Icons.check_circle
-                                    : Icons.play_arrow,
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Text(
-                                  target?.label ?? 'Currently unavailable',
-                                  style: Theme.of(context).textTheme.titleLarge,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 22,
+                              vertical: 16,
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  target?.action == SmartResumeAction.completed
+                                      ? Icons.check_circle
+                                      : Icons.play_arrow,
+                                  color: scheme.onPrimaryContainer,
                                 ),
-                              ),
-                            ],
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    target?.label ?? 'Currently unavailable',
+                                    style: theme.textTheme.titleLarge?.copyWith(
+                                      color: scheme.onPrimaryContainer,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ),
                     ),
-                    const SizedBox(width: 18),
                     SizedBox(
                       width: 240,
                       child: TvFocusable(
@@ -339,9 +394,9 @@ class _TvDetailsHero extends StatelessWidget {
                     ),
                   ],
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 16),
                 Text(
-                  '${details.summary.bindings.length} media source(s) · source choice remains available per episode',
+                  '${details.summary.bindings.length} source(s) · Choose a source when opening ${media is CanonicalAnime ? 'an episode' : 'a chapter'}',
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
               ],

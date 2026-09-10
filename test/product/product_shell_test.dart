@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zanka_no_tachi/canonical/domain/identifiers.dart';
 import 'package:zanka_no_tachi/canonical/domain/matching.dart';
@@ -32,6 +33,124 @@ void main() {
     await repository.dispose();
   });
 
+  for (final layout in [
+    (name: 'phone', size: const Size(360, 780), mode: PresentationMode.mobile),
+    (
+      name: 'tablet',
+      size: const Size(1100, 800),
+      mode: PresentationMode.tablet,
+    ),
+  ]) {
+    testWidgets('${layout.name} navigation and Settings routes stay usable', (
+      tester,
+    ) async {
+      tester.view.reset();
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = layout.size;
+      addTearDown(tester.view.reset);
+      final repository = _repository(
+        CanonicalDatabase(NativeDatabase.memory()),
+      );
+      await tester.pumpWidget(
+        ZankaApp(repository: repository, presentationMode: layout.mode),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('product-primary-navigation')),
+        findsOneWidget,
+      );
+      for (final destination in ['home', 'search', 'library', 'settings']) {
+        expect(
+          find.byKey(Key('nav-$destination')).hitTestable(),
+          findsOneWidget,
+        );
+      }
+      await tester.tap(find.byKey(const Key('nav-search')));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('product-search-field')),
+        'saved query',
+      );
+      await tester.tap(find.byKey(const Key('nav-library')));
+      await tester.pumpAndSettle();
+      expect(find.text('Nothing here yet'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('nav-settings')));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byKey(const Key('settings-sources')));
+      await tester.tap(find.byKey(const Key('settings-sources')));
+      await tester.pumpAndSettle();
+
+      const providerKey = Key('setting-provider-mangaworld');
+      expect(tester.widget<Switch>(find.byKey(providerKey)).value, isTrue);
+      await tester.tap(find.byKey(providerKey));
+      await tester.pumpAndSettle();
+      expect(
+        repository.registry.require(const ProviderId('mangaworld')).enabled,
+        isFalse,
+      );
+      expect(tester.widget<Switch>(find.byKey(providerKey)).value, isFalse);
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const PageStorageKey('settings-scroll')),
+        findsOneWidget,
+      );
+      expect(find.byKey(providerKey), findsNothing);
+      await tester.tap(find.byKey(const Key('nav-search')));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<SearchBar>(find.byKey(const Key('product-search-field')))
+            .controller
+            ?.text,
+        'saved query',
+      );
+      await tester.tap(find.byKey(const Key('nav-home')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const PageStorageKey('home-scroll')), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await repository.dispose();
+    });
+  }
+
+  testWidgets('TV shell destinations activate with D-pad focus', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1280, 800);
+    addTearDown(tester.view.reset);
+    final repository = _repository(CanonicalDatabase(NativeDatabase.memory()));
+    await tester.pumpWidget(
+      ZankaApp(repository: repository, presentationMode: PresentationMode.tv),
+    );
+    await tester.pumpAndSettle();
+
+    const homeKey = Key('nav-home');
+    for (var attempt = 0; attempt < 12 && !_focusWithin(homeKey); attempt++) {
+      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      await tester.pumpAndSettle();
+    }
+    expect(_focusWithin(homeKey), isTrue);
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pumpAndSettle();
+    expect(_focusWithin(const Key('nav-search')), isTrue);
+    await tester.sendKeyEvent(LogicalKeyboardKey.select);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('tv-search-field')), findsOneWidget);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pumpAndSettle();
+    expect(_focusWithin(const Key('nav-library')), isTrue);
+    await tester.sendKeyEvent(LogicalKeyboardKey.select);
+    await tester.pumpAndSettle();
+    expect(find.text('Your Library is empty'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await repository.dispose();
+  });
+
   testWidgets(
     'launches Home with discover sections and Developer is intentional',
     (tester) async {
@@ -51,14 +170,10 @@ void main() {
       expect(find.text('Discover Anime'), findsOneWidget);
       expect(find.text('Developer Sources'), findsNothing);
 
-      await tester.tap(find.text('Settings'));
-      await tester.pumpAndSettle();
-      await tester.drag(
-        find.byKey(const PageStorageKey('settings-scroll')),
-        const Offset(0, -500),
-      );
+      await tester.tap(find.byKey(const Key('nav-settings')));
       await tester.pumpAndSettle();
       await tester.ensureVisible(find.byKey(const Key('open-local-media')));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('open-local-media')));
       await tester.pumpAndSettle();
       expect(find.text('Import CBZ'), findsOneWidget);
@@ -69,17 +184,11 @@ void main() {
       await tester.pageBack();
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('open-developer-tools')), findsNothing);
-      await tester.drag(
-        find.byKey(const PageStorageKey('settings-scroll')),
-        const Offset(0, -1000),
-      );
+      await tester.ensureVisible(find.byKey(const Key('open-about')));
       await tester.pumpAndSettle();
       await tester.longPress(find.byKey(const Key('open-about')));
       await tester.pumpAndSettle();
-      await tester.drag(
-        find.byKey(const PageStorageKey('settings-scroll')),
-        const Offset(0, -250),
-      );
+      await tester.ensureVisible(find.byKey(const Key('open-developer-tools')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('open-developer-tools')));
       await tester.pumpAndSettle();
@@ -97,7 +206,7 @@ void main() {
     await tester.pumpWidget(ZankaApp(repository: repository));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Search'));
+    await tester.tap(find.byKey(const Key('nav-search')));
     await tester.pumpAndSettle();
     await tester.enterText(
       find.byKey(const Key('product-search-field')),
@@ -138,7 +247,7 @@ void main() {
 
     await tester.pageBack();
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Library'));
+    await tester.tap(find.byKey(const Key('nav-library')));
     await tester.pumpAndSettle();
     expect(find.text('MAD'), findsOneWidget);
     await tester.tap(find.text('MAD'));
@@ -176,7 +285,7 @@ void main() {
       );
       await tester.pumpWidget(ZankaApp(repository: repository));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Library'));
+      await tester.tap(find.byKey(const Key('nav-library')));
       await tester.pumpAndSettle();
       expect(find.text('Berserk (M3 synthetic)'), findsOneWidget);
       await tester.tap(find.text('Berserk (M3 synthetic)'));
@@ -189,6 +298,10 @@ void main() {
         find.byKey(const ValueKey('source-synthetic-manga-b')),
         findsOneWidget,
       );
+      await tester.ensureVisible(
+        find.byKey(const ValueKey('source-synthetic-manga-b')),
+      );
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('source-synthetic-manga-b')));
       await tester.pumpAndSettle();
       expect(
@@ -247,7 +360,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('Some sources are unavailable'), findsOneWidget);
-    await tester.tap(find.text('Library'));
+    await tester.tap(find.byKey(const Key('nav-library')));
     await tester.pumpAndSettle();
     expect(find.text('Berserk (M3 synthetic)'), findsOneWidget);
     await tester.pumpWidget(const SizedBox.shrink());
@@ -273,7 +386,7 @@ void main() {
     );
     await tester.pumpWidget(ZankaApp(repository: repository));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Library'));
+    await tester.tap(find.byKey(const Key('nav-library')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Example Anime (M3 synthetic)'));
     await tester.pumpAndSettle();
@@ -296,6 +409,18 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
     await repository.dispose();
   });
+}
+
+bool _focusWithin(Key key) {
+  var found = false;
+  FocusManager.instance.primaryFocus?.context?.visitAncestorElements((element) {
+    if (element.widget.key == key) {
+      found = true;
+      return false;
+    }
+    return true;
+  });
+  return found;
 }
 
 LiveProviderRepository _repository(

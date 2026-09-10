@@ -17,6 +17,116 @@ abstract final class ZankaSpace {
 abstract final class ZankaRadius {
   static const card = 20.0;
   static const chip = 12.0;
+  static const feature = 28.0;
+}
+
+/// Editorial framing for the product shell, Settings and content details.
+/// Kept local to these surfaces rather than restyling reader/player controls.
+class ZankaPageHeading extends StatelessWidget {
+  const ZankaPageHeading({
+    super.key,
+    required this.eyebrow,
+    required this.title,
+    this.description,
+    this.trailing,
+    this.tv = false,
+  });
+
+  final String eyebrow;
+  final String title;
+  final String? description;
+  final Widget? trailing;
+  final bool tv;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                eyebrow.toUpperCase(),
+                style: theme.textTheme.labelMedium?.copyWith(
+                  color: theme.colorScheme.primary,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 2,
+                  fontSize: tv ? 16 : null,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                title,
+                style:
+                    (tv
+                            ? theme.textTheme.displayMedium
+                            : theme.textTheme.headlineLarge)
+                        ?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -1,
+                        ),
+              ),
+              if (description != null) ...[
+                const SizedBox(height: 10),
+                Text(
+                  description!,
+                  style: theme.textTheme.bodyLarge?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                    fontSize: tv ? 20 : null,
+                    height: 1.5,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        if (trailing != null) ...[const SizedBox(width: 16), trailing!],
+      ],
+    );
+  }
+}
+
+class ZankaSurface extends StatelessWidget {
+  const ZankaSurface({
+    super.key,
+    required this.child,
+    this.padding = const EdgeInsets.all(24),
+    this.emphasis = false,
+    this.borderRadius,
+  });
+
+  final Widget child;
+  final EdgeInsetsGeometry padding;
+  final bool emphasis;
+  final BorderRadius? borderRadius;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius:
+            borderRadius ?? BorderRadius.circular(ZankaRadius.feature),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            emphasis
+                ? Color.alphaBlend(
+                    scheme.primary.withValues(alpha: .13),
+                    scheme.surfaceContainerLow,
+                  )
+                : scheme.surfaceContainerLow,
+            scheme.surfaceContainerLowest,
+          ],
+        ),
+      ),
+      child: Padding(padding: padding, child: child),
+    );
+  }
 }
 
 Color zankaAccentColor(ZankaAccent accent) => switch (accent) {

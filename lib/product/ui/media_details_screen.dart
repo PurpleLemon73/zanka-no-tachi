@@ -340,7 +340,11 @@ class _MediaDetailsScreenState extends State<MediaDetailsScreen> {
     final value = details;
     return Scaffold(
       appBar: AppBar(
-        title: Text(value?.summary.media.title.value ?? 'Media details'),
+        title: const Text('Details'),
+        backgroundColor: Theme.of(
+          context,
+        ).colorScheme.surface.withValues(alpha: .9),
+        surfaceTintColor: Colors.transparent,
         actions: [
           if (value != null)
             IconButton(
@@ -510,76 +514,30 @@ class _DetailsBodyState extends State<_DetailsBody> {
       key: const Key('media-details'),
       slivers: [
         SliverToBoxAdapter(
+          child: _DetailsHero(
+            details: details,
+            action: _SmartResumeCard(
+              details: details,
+              readerRepository: readerRepository,
+              playbackRepository: playbackRepository,
+              onClosed: onReaderClosed,
+            ),
+            onLibrary: () => onLibrary(saved: !summary.isSaved),
+            onFavorite: () => onLibrary(favorite: !summary.isFavorite),
+          ),
+        ),
+        SliverToBoxAdapter(
           child: Padding(
-            padding: const EdgeInsets.all(ZankaSpace.md),
+            padding: const EdgeInsets.symmetric(horizontal: ZankaSpace.lg),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    CoverArt(
-                      locator: media.coverLocator,
-                      width: 112,
-                      height: 160,
-                    ),
-                    const SizedBox(width: ZankaSpace.md),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            media.title.value,
-                            style: Theme.of(context).textTheme.headlineSmall,
-                          ),
-                          const SizedBox(height: ZankaSpace.sm),
-                          Text(_metadata(media)),
-                          Text(
-                            'Title source: ${_origin(media.title.provenance.providerId)}',
-                            style: Theme.of(context).textTheme.bodySmall,
-                          ),
-                          const SizedBox(height: ZankaSpace.md),
-                          FilledButton.icon(
-                            key: const Key('toggle-library'),
-                            onPressed: () => onLibrary(saved: !summary.isSaved),
-                            icon: Icon(
-                              summary.isSaved
-                                  ? Icons.bookmark_remove
-                                  : Icons.bookmark_add,
-                            ),
-                            label: Text(
-                              summary.isSaved
-                                  ? 'Remove from Library'
-                                  : 'Add to Library',
-                            ),
-                          ),
-                          IconButton(
-                            key: const Key('toggle-favorite'),
-                            tooltip: summary.isFavorite
-                                ? 'Remove favorite'
-                                : 'Favorite',
-                            onPressed: () =>
-                                onLibrary(favorite: !summary.isFavorite),
-                            icon: Icon(
-                              summary.isFavorite
-                                  ? Icons.favorite
-                                  : Icons.favorite_border,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: ZankaSpace.lg),
-                _SmartResumeCard(
-                  details: details,
-                  readerRepository: readerRepository,
-                  playbackRepository: playbackRepository,
-                  onClosed: onReaderClosed,
-                ),
                 if (media.description case final description?) ...[
-                  const SizedBox(height: ZankaSpace.lg),
+                  const ZankaPageHeading(
+                    eyebrow: 'THE STORY',
+                    title: 'Overview',
+                  ),
+                  const SizedBox(height: ZankaSpace.md),
                   Semantics(
                     expanded: descriptionExpanded,
                     child: Column(
@@ -610,46 +568,49 @@ class _DetailsBodyState extends State<_DetailsBody> {
                     ),
                   ),
                 ],
-                if (media.alternateTitles.isNotEmpty ||
-                    media.genres.isNotEmpty ||
-                    details.metadataOverride?.creatorOrStudio != null)
-                  ExpansionTile(
-                    key: const Key('optional-metadata'),
-                    initiallyExpanded: metadataExpanded,
-                    onExpansionChanged: (value) =>
-                        setState(() => metadataExpanded = value),
-                    tilePadding: EdgeInsets.zero,
-                    title: const Text('More information'),
-                    children: [
-                      if (details.metadataOverride?.creatorOrStudio
-                          case final creator?)
-                        ListTile(
-                          title: Text(
-                            media is CanonicalAnime ? 'Studio' : 'Creator',
-                          ),
-                          subtitle: Text(creator),
+                ExpansionTile(
+                  key: const Key('optional-metadata'),
+                  initiallyExpanded: metadataExpanded,
+                  onExpansionChanged: (value) =>
+                      setState(() => metadataExpanded = value),
+                  tilePadding: EdgeInsets.zero,
+                  title: const Text('More information'),
+                  children: [
+                    ListTile(
+                      title: const Text('Title source'),
+                      subtitle: Text(
+                        _origin(media.title.provenance.providerId),
+                      ),
+                    ),
+                    if (details.metadataOverride?.creatorOrStudio
+                        case final creator?)
+                      ListTile(
+                        title: Text(
+                          media is CanonicalAnime ? 'Studio' : 'Creator',
                         ),
-                      if (media.alternateTitles.isNotEmpty)
-                        ListTile(
-                          title: const Text('Also known as'),
-                          subtitle: Text(
-                            media.alternateTitles
-                                .map((item) => item.value)
-                                .join(', '),
-                          ),
+                        subtitle: Text(creator),
+                      ),
+                    if (media.alternateTitles.isNotEmpty)
+                      ListTile(
+                        title: const Text('Also known as'),
+                        subtitle: Text(
+                          media.alternateTitles
+                              .map((item) => item.value)
+                              .join(', '),
                         ),
-                      if (media.genres.isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: ZankaSpace.sm),
-                          child: Wrap(
-                            spacing: ZankaSpace.sm,
-                            children: media.genres
-                                .map((genre) => Chip(label: Text(genre.value)))
-                                .toList(),
-                          ),
+                      ),
+                    if (media.genres.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: ZankaSpace.sm),
+                        child: Wrap(
+                          spacing: ZankaSpace.sm,
+                          children: media.genres
+                              .map((genre) => Chip(label: Text(genre.value)))
+                              .toList(),
                         ),
-                    ],
-                  ),
+                      ),
+                  ],
+                ),
                 if (summary.hasProgress) ...[
                   const ZankaSectionTitle('Current progress'),
                   Text(_progressText(summary)),
@@ -740,9 +701,14 @@ class _DetailsBodyState extends State<_DetailsBody> {
                     },
                   ),
                 ],
-                ZankaSectionTitle(
-                  media is CanonicalManga ? 'Chapters' : 'Episodes',
+                const SizedBox(height: ZankaSpace.xl),
+                ZankaPageHeading(
+                  eyebrow: 'CONTENTS',
+                  title: media is CanonicalManga ? 'Chapters' : 'Episodes',
+                  description:
+                      '$installments ${media is CanonicalManga ? 'chapters' : 'episodes'}',
                 ),
+                const SizedBox(height: ZankaSpace.md),
                 if (installments == 0)
                   const Text(
                     'No public installment metadata is available yet.',
@@ -835,6 +801,131 @@ class _DetailsBodyState extends State<_DetailsBody> {
   }
 }
 
+class _DetailsHero extends StatelessWidget {
+  const _DetailsHero({
+    required this.details,
+    required this.action,
+    required this.onLibrary,
+    required this.onFavorite,
+  });
+
+  final ProductMediaDetails details;
+  final Widget action;
+  final VoidCallback onLibrary;
+  final VoidCallback onFavorite;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final media = details.summary.media;
+    return Stack(
+      key: const Key('details-artwork-hero'),
+      children: [
+        Positioned.fill(
+          child: ExcludeSemantics(
+            child: CoverArt(
+              locator: media.coverLocator,
+              width: double.infinity,
+              height: double.infinity,
+            ),
+          ),
+        ),
+        Positioned.fill(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                stops: const [0, .35, .7, 1],
+                colors: [
+                  scheme.surface.withValues(alpha: .4),
+                  scheme.surface.withValues(alpha: .6),
+                  scheme.surface.withValues(alpha: .96),
+                  scheme.surface,
+                ],
+              ),
+            ),
+          ),
+        ),
+        Padding(
+          padding: EdgeInsets.fromLTRB(
+            ZankaSpace.lg,
+            92,
+            ZankaSpace.lg,
+            ZankaSpace.xl,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '${media is CanonicalManga ? 'MANGA' : 'ANIME'} / '
+                '${details.summary.isSaved ? 'IN YOUR LIBRARY' : 'IN FOCUS'}',
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                  letterSpacing: 2,
+                  fontWeight: FontWeight.w700,
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                media.title.value,
+                style: Theme.of(context).textTheme.headlineLarge?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -1,
+                  height: 1.1,
+                ),
+              ),
+              const SizedBox(height: 14),
+              Text(
+                _metadata(media),
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+              const SizedBox(height: 24),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 600),
+                child: action,
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 12,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  OutlinedButton.icon(
+                    key: const Key('toggle-library'),
+                    onPressed: onLibrary,
+                    icon: Icon(
+                      details.summary.isSaved
+                          ? Icons.bookmark_remove_outlined
+                          : Icons.bookmark_add_outlined,
+                    ),
+                    label: Text(
+                      details.summary.isSaved
+                          ? 'Remove from Library'
+                          : 'Add to Library',
+                    ),
+                  ),
+                  IconButton.filledTonal(
+                    key: const Key('toggle-favorite'),
+                    tooltip: details.summary.isFavorite
+                        ? 'Remove favorite'
+                        : 'Favorite',
+                    onPressed: onFavorite,
+                    icon: Icon(
+                      details.summary.isFavorite
+                          ? Icons.favorite
+                          : Icons.favorite_border,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _ChapterGroup {
   const _ChapterGroup(this.key, this.label, this.items);
   final String key;
@@ -908,13 +999,15 @@ class _SmartResumeCard extends StatelessWidget {
     return Semantics(
       button: target.hasAction,
       label: [target.label, if (subtitle.isNotEmpty) subtitle].join(', '),
-      child: Card.filled(
+      child: Material(
         color: Theme.of(context).colorScheme.primaryContainer,
+        borderRadius: BorderRadius.circular(20),
+        clipBehavior: Clip.antiAlias,
         child: ListTile(
           key: const Key('smart-resume-cta'),
           contentPadding: const EdgeInsets.symmetric(
-            horizontal: ZankaSpace.md,
-            vertical: ZankaSpace.sm,
+            horizontal: ZankaSpace.lg,
+            vertical: 12,
           ),
           leading: Icon(
             target.action == SmartResumeAction.completed
@@ -926,7 +1019,9 @@ class _SmartResumeCard extends StatelessWidget {
           ),
           title: Text(
             target.label,
-            style: Theme.of(context).textTheme.titleLarge,
+            style: Theme.of(
+              context,
+            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
           ),
           subtitle: subtitle.isEmpty ? null : Text(subtitle),
           trailing: target.hasAction ? const Icon(Icons.arrow_forward) : null,

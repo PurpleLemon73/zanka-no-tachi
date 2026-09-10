@@ -7,6 +7,8 @@ import '../product/product_controller.dart';
 import '../product/product_models.dart';
 import '../product/smart_resume.dart';
 import '../product/ui/design_system.dart';
+import '../product/ui/settings_visuals.dart';
+import '../product/ui/product_navigation.dart';
 import 'tv_design_system.dart';
 import 'tv_media_details_screen.dart';
 
@@ -34,37 +36,13 @@ class TvProductShell extends StatelessWidget {
       body: SafeArea(
         child: Row(
           children: [
-            SizedBox(
-              width: TvTokens.railWidth,
-              child: NavigationRail(
-                extended: false,
-                selectedIndex: controller.selectedTab,
-                onDestinationSelected: controller.selectTab,
-                labelType: NavigationRailLabelType.all,
-                destinations: const [
-                  NavigationRailDestination(
-                    icon: Icon(Icons.home_outlined),
-                    selectedIcon: Icon(Icons.home),
-                    label: Text('Home'),
-                  ),
-                  NavigationRailDestination(
-                    icon: Icon(Icons.search),
-                    label: Text('Search'),
-                  ),
-                  NavigationRailDestination(
-                    icon: Icon(Icons.video_library_outlined),
-                    selectedIcon: Icon(Icons.video_library),
-                    label: Text('Library'),
-                  ),
-                  NavigationRailDestination(
-                    icon: Icon(Icons.settings_outlined),
-                    selectedIcon: Icon(Icons.settings),
-                    label: Text('Settings'),
-                  ),
-                ],
-              ),
+            ZankaNavigation(
+              key: const Key('product-primary-navigation'),
+              vertical: true,
+              tv: true,
+              selectedIndex: controller.selectedTab,
+              onSelected: controller.selectTab,
             ),
-            const VerticalDivider(width: 1),
             Expanded(
               child: switch (controller.selectedTab) {
                 0 => TvHomeScreen(controller: controller),
@@ -635,64 +613,51 @@ class TvSettingsScreen extends StatelessWidget {
       vertical: TvTokens.safeVertical,
     ),
     children: [
-      Text('Settings', style: Theme.of(context).textTheme.displaySmall),
-      const SizedBox(height: 24),
-      const TvSectionTitle('Appearance'),
-      Wrap(
-        spacing: 14,
-        runSpacing: 14,
-        children: ZankaThemeMode.values
-            .map(
-              (mode) => ChoiceChip(
-                label: Text(
-                  mode.name[0].toUpperCase() + mode.name.substring(1),
-                ),
-                selected: appearance.themeMode == mode,
-                onSelected: (_) => onAppearanceChanged(mode, appearance.accent),
-              ),
-            )
-            .toList(),
+      const ZankaPageHeading(
+        eyebrow: 'MAKE IT YOURS',
+        title: 'Settings',
+        description: 'A quieter backdrop. A look of your own.',
+        tv: true,
       ),
-      const SizedBox(height: 24),
-      Wrap(
-        spacing: 14,
-        runSpacing: 14,
-        children: ZankaAccent.values
-            .map(
-              (accent) => ChoiceChip(
-                label: Text(accent.name),
-                selected: appearance.accent == accent,
-                onSelected: (_) =>
-                    onAppearanceChanged(appearance.themeMode, accent),
-              ),
-            )
-            .toList(),
-      ),
-      const SizedBox(height: 32),
-      SizedBox(
-        width: 360,
-        child: TvFocusable(
-          onPressed: () => Navigator.of(
-            context,
-          ).push(MaterialPageRoute<void>(builder: aboutBuilder)),
-          child: const ListTile(
-            leading: Icon(Icons.info_outline),
-            title: Text('About Zanka'),
+      const SizedBox(height: 30),
+      SettingsCategoryPanel(
+        key: const Key('settings-appearance'),
+        title: 'Appearance',
+        description: 'System, Light or Dark. Seven accent colors.',
+        icon: Icons.contrast_rounded,
+        tv: true,
+        onPressed: () => Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            settings: const RouteSettings(name: '/settings/appearance'),
+            builder: (_) => AppearanceSettingsPage(
+              appearance: appearance,
+              onAppearanceChanged: onAppearanceChanged,
+              tv: true,
+            ),
           ),
         ),
+      ),
+      const SizedBox(height: 24),
+      SettingsAction(
+        key: const Key('open-about'),
+        title: 'About Zanka',
+        description: 'Help, privacy, licenses and local diagnostics.',
+        icon: Icons.info_outline_rounded,
+        tv: true,
+        onPressed: () => Navigator.of(
+          context,
+        ).push(MaterialPageRoute<void>(builder: aboutBuilder)),
       ),
       const SizedBox(height: 14),
-      SizedBox(
-        width: 360,
-        child: TvFocusable(
-          onPressed: () => Navigator.of(
-            context,
-          ).push(MaterialPageRoute<void>(builder: developerBuilder)),
-          child: const ListTile(
-            leading: Icon(Icons.developer_mode),
-            title: Text('Developer'),
-          ),
-        ),
+      SettingsAction(
+        key: const Key('open-developer-tools'),
+        title: 'Developer',
+        description: 'Advanced controls and source diagnostics.',
+        icon: Icons.developer_mode_rounded,
+        tv: true,
+        onPressed: () => Navigator.of(
+          context,
+        ).push(MaterialPageRoute<void>(builder: developerBuilder)),
       ),
     ],
   );
