@@ -45,6 +45,12 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
   bool preparingNext = false;
   bool preparationFailed = false;
   CanonicalChapterId? preparationAttempt;
+  bool preparingPrevious = false;
+  bool previousPreparationFailed = false;
+  CanonicalChapterId? previousPreparationAttempt;
+  final Map<int, ReaderSession> preparedNeighbors = {};
+  CanonicalChapterId? verticalCenterId;
+  bool rebasingPages = false;
   Future<void> pendingSave = Future<void>.value();
   bool trimScheduled = false;
   bool visibleUpdateScheduled = false;
@@ -66,6 +72,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
     if (widget.initialSession case final initial?) {
       session = initial;
       chapterWindow.add(initial);
+      verticalCenterId = initial.chapter.id;
       currentPage = initial.startPage;
       pageController = PageController(initialPage: currentPage);
       scrollController = _ContinuityScrollController();
@@ -96,6 +103,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
       preparingNext = false;
       preparationFailed = false;
       preparationAttempt = null;
+      _resetPreviousPreparation();
     });
     try {
       final value = await widget.repository.open(request);
@@ -116,6 +124,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
       setState(() {
         session = value;
         chapterWindow.add(value);
+        verticalCenterId = value.chapter.id;
       });
       await _refreshNavigation(value.mediaId);
       WidgetsBinding.instance.addPostFrameCallback(
@@ -150,7 +159,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
       completionHandled = true;
       unawaited(_completeChapter(current));
     }
-    _prepareNext();
+    _prepareNeighbors();
   }
 
   int get _currentChapterIndex => chapterNavigation.indexWhere(
@@ -195,24 +204,51 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
   // Resolution uses exactly the normal preferred-readable source policy, but
   // never an explicit binding (which would write the preferred provider).
   // A prepared session is not active and must never be flushed to persistence.
-  Future<void> _prepareNext({bool retry = false}) async {
+  void _resetPreviousPreparation() {
+    preparingPrevious = false;
+    previousPreparationFailed = false;
+    previousPreparationAttempt = null;
+    preparedNeighbors.clear();
+  }
+
+  void _prepareNeighbors() {
+    unawaited(_prepareNeighbor(-1));
+    unawaited(_prepareNeighbor(1));
+  }
+
+  Future<void> _prepareNext({bool retry = false}) =>
+      _prepareNeighbor(1, retry: retry);
+
+  Future<void> _prepareNeighbor(int direction, {bool retry = false}) async {
     final active = session;
-    final next = _chapterAtOffset(1);
+    final next = _chapterAtOffset(direction);
+    final backwards = direction < 0;
     if (active == null ||
-        currentPage < active.manifest.pages.length - 2 ||
+        (backwards
+            ? currentPage > 1
+            : currentPage < active.manifest.pages.length - 2) ||
         next == null ||
         next.openableBindings.isEmpty ||
         chapterWindow.any((item) => item.chapter.id == next.chapter.id) ||
         chapterWindow.length >= 3 ||
-        preparingNext ||
-        (!retry && preparationAttempt == next.chapter.id)) {
+        preparedNeighbors.containsKey(direction) ||
+        (backwards ? preparingPrevious : preparingNext) ||
+        (!retry &&
+            (backwards ? previousPreparationAttempt : preparationAttempt) ==
+                next.chapter.id)) {
       return;
     }
     final ticket = generation;
     setState(() {
-      preparingNext = true;
-      preparationFailed = false;
-      preparationAttempt = next.chapter.id;
+      if (backwards) {
+        preparingPrevious = true;
+        previousPreparationFailed = false;
+        previousPreparationAttempt = next.chapter.id;
+      } else {
+        preparingNext = true;
+        preparationFailed = false;
+        preparationAttempt = next.chapter.id;
+      }
     });
     try {
       final prepared = await widget.repository.open(
@@ -224,18 +260,60 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
       );
       if (!mounted || ticket != generation || session != active) return;
       setState(() {
-        chapterWindow.add(prepared);
-        preparingNext = false;
+        preparedNeighbors[direction] = prepared;
+        if (backwards) {
+          preparingPrevious = false;
+        } else {
+          preparingNext = false;
+        }
       });
-      // Only the first next-chapter image is warmed, not its whole chapter.
-      cache.load(prepared.manifest.pages.first).ignore();
+      _installPreparedNeighbors();
+      _scheduleTrim();
+      // Warm only the entry image; resolution alone never owns progress.
+      cache
+          .load(
+            backwards
+                ? prepared.manifest.pages.last
+                : prepared.manifest.pages.first,
+          )
+          .ignore();
     } on Object {
       if (!mounted || ticket != generation || session != active) return;
       setState(() {
-        preparingNext = false;
-        preparationFailed = true;
+        if (backwards) {
+          preparingPrevious = false;
+          previousPreparationFailed = true;
+        } else {
+          preparingNext = false;
+          preparationFailed = true;
+        }
       });
     }
+  }
+
+  void _installPreparedNeighbors() {
+    if (!mounted || session == null || preparedNeighbors.isEmpty) return;
+    final paged = session!.preferences.mode == ReaderMode.paged;
+    // Prepending changes absolute PageView indices. Rebase only between
+    // gestures, and fence synthetic callbacks so preparation cannot save.
+    if (paged &&
+        (pageController?.hasClients != true ||
+            pageController!.position.isScrollingNotifier.value)) {
+      return;
+    }
+    final previous = preparedNeighbors.remove(-1);
+    final next = preparedNeighbors.remove(1);
+    setState(() {
+      if (previous != null) chapterWindow.insert(0, previous);
+      if (next != null) chapterWindow.add(next);
+    });
+    if (paged && previous != null) _rebasePagedPosition();
+  }
+
+  void _rebasePagedPosition() {
+    rebasingPages = true;
+    pageController!.jumpToPage(_activeWindowPage);
+    WidgetsBinding.instance.addPostFrameCallback((_) => rebasingPages = false);
   }
 
   void _pageChanged(int page, [ReaderSession? chapter]) {
@@ -280,6 +358,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
         preparingNext = false;
         preparationFailed = false;
         preparationAttempt = null;
+        _resetPreviousPreparation();
       }
       currentPage = page;
       pagedZoomed = false;
@@ -293,7 +372,8 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
     } else {
       persistDebounce = Timer(const Duration(milliseconds: 300), _flush);
     }
-    unawaited(_prepareNext());
+    _scheduleTrim();
+    _prepareNeighbors();
   }
 
   Future<void> _completeChapter(ReaderSession value) async {
@@ -377,7 +457,10 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
   }
 
   void _scheduleTrim() {
-    if (trimScheduled || chapterWindow.length < 2) return;
+    if (trimScheduled ||
+        (chapterWindow.length < 2 && preparedNeighbors.isEmpty)) {
+      return;
+    }
     trimScheduled = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       trimScheduled = false;
@@ -385,60 +468,62 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
       final activeIndex = chapterWindow.indexWhere(
         (item) => item.chapter.id == session!.chapter.id,
       );
-      if (activeIndex <= 0) return;
-      var removeCount = 0;
-      var removedExtent = 0.0;
-      if (session!.preferences.mode == ReaderMode.vertical) {
-        final viewport =
-            viewportKey.currentContext?.findRenderObject() as RenderBox?;
-        if (viewport == null) return;
-        final top = viewport.localToGlobal(Offset.zero).dy;
-        for (final chapter in chapterWindow.take(activeIndex)) {
-          final boundary =
-              chapterBoundaryKeys[chapter.chapter.id]?.currentContext
-                      ?.findRenderObject()
-                  as RenderBox?;
+      if (activeIndex < 0) return;
+      final paged = session!.preferences.mode == ReaderMode.paged;
+      final controller = paged ? pageController : scrollController;
+      if (controller?.hasClients != true ||
+          controller!.position.isScrollingNotifier.value) {
+        return;
+      }
+      // Retain only the active chapter and its immediate canonical neighbors.
+      final first = (activeIndex - 1).clamp(0, chapterWindow.length - 1);
+      final end = (activeIndex + 2).clamp(0, chapterWindow.length);
+      if (first == 0 && end == chapterWindow.length) {
+        _installPreparedNeighbors();
+        return;
+      }
+      final centerIndex = chapterWindow.indexWhere(
+        (item) => item.chapter.id == verticalCenterId,
+      );
+      final newCenterIndex = centerIndex.clamp(first, end - 1);
+      if (!paged && centerIndex != newCenterIndex) {
+        var originShift = 0.0;
+        final lower = centerIndex < newCenterIndex
+            ? centerIndex
+            : newCenterIndex;
+        final upper = centerIndex > newCenterIndex
+            ? centerIndex
+            : newCenterIndex;
+        for (final chapter in chapterWindow.sublist(lower, upper)) {
           final sliver =
               chapterSliverKeys[chapter.chapter.id]?.currentContext
                       ?.findRenderObject()
                   as RenderSliver?;
-          if (boundary == null ||
-              sliver?.geometry == null ||
-              boundary.localToGlobal(Offset.zero).dy + boundary.size.height >
-                  top) {
-            break;
-          }
-          removedExtent +=
-              sliver!.geometry!.scrollExtent + boundary.size.height;
-          removeCount++;
+          final boundary =
+              chapterBoundaryKeys[chapter.chapter.id]?.currentContext
+                      ?.findRenderObject()
+                  as RenderBox?;
+          if (sliver?.geometry == null || boundary == null) return;
+          originShift += sliver!.geometry!.scrollExtent + boundary.size.height;
         }
-        if (removeCount == 0) return;
-        // Correct during the next layout, before paint. Dropping a wholly-read
-        // sliver must not visually move the remaining page or reset to the top.
-        scrollController!.removeLeadingExtent(removedExtent);
-      } else {
-        if (pageController?.hasClients != true ||
-            pageController!.position.isScrollingNotifier.value) {
-          return;
-        }
-        removeCount = activeIndex;
+        scrollController!.removeLeadingExtent(
+          centerIndex < newCenterIndex ? originShift : -originShift,
+        );
       }
-      final discarded = chapterWindow
-          .take(removeCount)
-          .map((item) => item.chapter.id)
-          .toSet();
+      final kept = chapterWindow.sublist(first, end);
+      final retainedIds = kept.map((item) => item.chapter.id).toSet();
       setState(() {
-        chapterWindow.removeRange(0, removeCount);
-        verticalPageKeys.removeWhere((key, _) => discarded.contains(key.$1));
-        chapterSliverKeys.removeWhere((key, _) => discarded.contains(key));
-        chapterBoundaryKeys.removeWhere((key, _) => discarded.contains(key));
+        verticalCenterId = chapterWindow[newCenterIndex].chapter.id;
+        chapterWindow
+          ..clear()
+          ..addAll(kept);
+        verticalPageKeys.removeWhere((key, _) => !retainedIds.contains(key.$1));
+        chapterSliverKeys.removeWhere((key, _) => !retainedIds.contains(key));
+        chapterBoundaryKeys.removeWhere((key, _) => !retainedIds.contains(key));
       });
-      if (session!.preferences.mode == ReaderMode.paged) {
-        // Rebase the existing position together with the delegate, before the
-        // next frame. A new controller would absorb the old absolute page.
-        pageController!.jumpToPage(currentPage);
-      }
-      unawaited(_prepareNext());
+      if (paged && first > 0) _rebasePagedPosition();
+      _installPreparedNeighbors();
+      _prepareNeighbors();
     });
   }
 
@@ -467,6 +552,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
     scrollController?.dispose();
     cache.clear();
     chapterWindow.clear();
+    preparedNeighbors.clear();
     super.dispose();
   }
 
@@ -562,6 +648,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
       preparingNext = false;
       preparationAttempt = null;
       preparationFailed = false;
+      _resetPreviousPreparation();
       verticalTrackingReady = false;
       session = ReaderSession(
         mediaId: value.mediaId,
@@ -575,7 +662,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
       pageController = PageController(initialPage: _activeWindowPage);
     });
     WidgetsBinding.instance.addPostFrameCallback((_) => _restoreVerticalPage());
-    unawaited(_prepareNext());
+    _prepareNeighbors();
   }
 
   Future<void> _sources() async {
@@ -883,6 +970,35 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
     );
   }
 
+  Widget _verticalPages(ReaderSession chapter, ReaderFit fit) {
+    final beforeCenter =
+        chapterWindow.indexOf(chapter) <
+        chapterWindow.indexWhere((item) => item.chapter.id == verticalCenterId);
+    final count = chapter.manifest.pages.length;
+    // Slivers before the stable origin grow upwards. Build their pages from
+    // the tail so preparing a previous chapter never estimates/loads its whole
+    // height or moves the current page while images resolve.
+    return SliverList.builder(
+      key: chapterSliverKeys.putIfAbsent(chapter.chapter.id, GlobalKey.new),
+      itemCount: count,
+      itemBuilder: (_, offset) {
+        final index = beforeCenter ? count - 1 - offset : offset;
+        return KeyedSubtree(
+          key: verticalPageKeys.putIfAbsent((
+            chapter.chapter.id,
+            index,
+          ), GlobalKey.new),
+          child: _ReaderPageView(
+            key: ValueKey((chapter.chapter.id, index)),
+            page: chapter.manifest.pages[index],
+            cache: cache,
+            fit: fit,
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final value = session;
@@ -981,6 +1097,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                                 return null;
                               },
                               onPageChanged: (index) {
+                                if (rebasingPages) return;
                                 final (chapter, page) = _windowPage(index);
                                 _pageChanged(page, chapter);
                               },
@@ -1019,32 +1136,18 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                             child: CustomScrollView(
                               key: const Key('vertical-reader'),
                               controller: scrollController,
+                              center: chapterSliverKeys.putIfAbsent(
+                                verticalCenterId!,
+                                GlobalKey.new,
+                              ),
                               scrollCacheExtent: const ScrollCacheExtent.pixels(
                                 200,
                               ),
                               slivers: [
                                 for (final chapter in chapterWindow) ...[
-                                  SliverList.builder(
-                                    key: chapterSliverKeys.putIfAbsent(
-                                      chapter.chapter.id,
-                                      GlobalKey.new,
-                                    ),
-                                    itemCount: chapter.manifest.pages.length,
-                                    itemBuilder: (_, index) => KeyedSubtree(
-                                      key: verticalPageKeys.putIfAbsent((
-                                        chapter.chapter.id,
-                                        index,
-                                      ), GlobalKey.new),
-                                      child: _ReaderPageView(
-                                        key: ValueKey((
-                                          chapter.chapter.id,
-                                          index,
-                                        )),
-                                        page: chapter.manifest.pages[index],
-                                        cache: cache,
-                                        fit: value.preferences.fit,
-                                      ),
-                                    ),
+                                  _verticalPages(
+                                    chapter,
+                                    value.preferences.fit,
                                   ),
                                   SliverToBoxAdapter(
                                     key: ValueKey(
@@ -1067,6 +1170,20 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                             ),
                           ),
                   ),
+                  if (previousPreparationFailed && currentPage == 0)
+                    Align(
+                      alignment: Alignment.topCenter,
+                      child: TextButton.icon(
+                        key: const Key('reader-previous-continuation-retry'),
+                        style: TextButton.styleFrom(
+                          backgroundColor: Colors.black87,
+                          foregroundColor: Colors.white,
+                        ),
+                        onPressed: () => _prepareNeighbor(-1, retry: true),
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Retry previous chapter'),
+                      ),
+                    ),
                   if (completionVisible &&
                       value.preferences.mode == ReaderMode.paged)
                     _ChapterCompletionOverlay(
@@ -1287,8 +1404,9 @@ class _ChapterCompletionOverlay extends StatelessWidget {
   }
 }
 
-/// Compensates only for fully offscreen, discarded leading chapter slivers.
-/// Flutter relayouts immediately on false, so no intermediate jump is painted.
+/// Rebases the stable vertical origin when it leaves the bounded window.
+/// Preparation grows upwards without correction; only fully traversed chapter
+/// extents are used to move the origin. Relayout happens before the next paint.
 class _ContinuityScrollController extends ScrollController {
   void removeLeadingExtent(double extent) {
     (position as _ContinuityScrollPosition).leadingCorrection += extent;

@@ -28,6 +28,57 @@ CanonicalChapterId _chapter(int number) =>
 void main() {
   for (final direction in ReaderDirection.values) {
     testWidgets(
+      'natural backward ${direction.name} enters the previous final page without resume bleed',
+      (tester) async {
+        final fixture = await _fixture(
+          tester,
+          direction: direction,
+          chapterCount: 3,
+        );
+        await tester.runAsync(() async {
+          await fixture.seedResume(1, 2);
+          await fixture.seedResume(2, 1);
+          await fixture.seedResume(2, 2, provider: _alternate);
+        });
+        await fixture.pump(tester, chapter: 3);
+        final viewport = find.byKey(const Key('paged-reader'));
+        final controller = tester.widget<PageView>(viewport).controller!;
+        expect(find.text('1 / 4 · Test source'), findsOneWidget);
+        expect(fixture.source.calls, {_chapter(3): 1, _chapter(2): 1});
+        await tester.runAsync(() async {
+          expect(await fixture.database.mangaProgress(_media), isNull);
+          expect(await fixture.repository.completedChapters(_media), isEmpty);
+          expect(await fixture.resumePage(2), 1);
+          expect(await fixture.resumePage(2, provider: _alternate), 2);
+        });
+
+        await _turnBackward(tester, direction);
+        expect(find.text('Chapter 2'), findsWidgets);
+        expect(find.text('4 / 4 · Test source'), findsOneWidget);
+        expect(tester.widget<PageView>(viewport).controller, same(controller));
+        expect(find.byType(MangaReaderScreen), findsOneWidget);
+        await tester.runAsync(() async {
+          expect(
+            (await fixture.database.mangaProgress(_media))?.chapterId,
+            _chapter(2),
+          );
+          expect(await fixture.resumePage(2), 3);
+          expect(await fixture.resumePage(2, provider: _alternate), 2);
+          expect(await fixture.resumePage(1), 2);
+          expect(await fixture.repository.completedChapters(_media), {
+            _chapter(2),
+          });
+        });
+        await _turnForward(tester, direction);
+        expect(find.text('Chapter 3'), findsWidgets);
+        expect(find.text('1 / 4 · Test source'), findsOneWidget);
+        await _turnBackward(tester, direction);
+        expect(find.text('4 / 4 · Test source'), findsOneWidget);
+        expect(fixture.source.calls, {_chapter(3): 1, _chapter(2): 1});
+      },
+    );
+
+    testWidgets(
       'natural paged ${direction.name} continuation preserves isolated resumes and completion',
       (tester) async {
         final fixture = await _fixture(tester, direction: direction);
@@ -88,6 +139,107 @@ void main() {
       },
     );
   }
+
+  testWidgets(
+    'vertical previous preparation keeps its anchor and crosses upward naturally',
+    (tester) async {
+      final fixture = await _fixture(
+        tester,
+        mode: ReaderMode.vertical,
+        chapterCount: 3,
+      );
+      final held = Completer<void>();
+      fixture.source.holds[_chapter(1)] = held.future;
+      await tester.runAsync(() => fixture.seedResume(1, 1));
+      await fixture.pump(tester, chapter: 2);
+      final viewport = find.byKey(const Key('vertical-reader'));
+      final controller = tester.widget<ScrollView>(viewport).controller!;
+      final firstPage = find.byKey(ValueKey((_chapter(2), 0)));
+      final originalTop = tester.getTopLeft(firstPage).dy;
+      held.complete();
+      await _settle(tester);
+      expect(tester.getTopLeft(firstPage).dy, closeTo(originalTop, 1));
+      expect(find.text('1 / 4 · Test source'), findsOneWidget);
+      await tester.runAsync(() async {
+        expect(await fixture.database.mangaProgress(_media), isNull);
+        expect(await fixture.repository.completedChapters(_media), isEmpty);
+        expect(await fixture.resumePage(1), 1);
+      });
+      await tester.drag(viewport, const Offset(0, 420));
+      await _settle(tester);
+      expect(find.text('Chapter 1'), findsWidgets);
+      expect(find.text('4 / 4 · Test source'), findsOneWidget);
+      expect(tester.widget<ScrollView>(viewport).controller, same(controller));
+      await tester.runAsync(() async {
+        expect(
+          (await fixture.database.mangaProgress(_media))?.chapterId,
+          _chapter(1),
+        );
+        expect(await fixture.resumePage(1), 3);
+        expect(await fixture.repository.completedChapters(_media), {
+          _chapter(1),
+        });
+      });
+      await tester.drag(viewport, const Offset(0, -420));
+      await _settle(tester);
+      expect(find.text('Chapter 2'), findsWidgets);
+      expect(find.text('1 / 4 · Test source'), findsOneWidget);
+      expect(fixture.source.calls, {_chapter(2): 1, _chapter(1): 1});
+    },
+  );
+
+  testWidgets(
+    'failed previous preparation is non-destructive and explicitly retryable',
+    (tester) async {
+      final fixture = await _fixture(tester);
+      fixture.source.failures[_chapter(1)] = 1;
+      await fixture.pump(tester, chapter: 2);
+      expect(find.text('1 / 4 · Test source'), findsOneWidget);
+      await _turnBackward(tester, ReaderDirection.leftToRight);
+      expect(find.text('1 / 4 · Test source'), findsOneWidget);
+      expect(fixture.source.calls[_chapter(1)], 1);
+      await tester.runAsync(() async {
+        expect(await fixture.resumePage(1), isNull);
+        expect(await fixture.repository.completedChapters(_media), isEmpty);
+      });
+      await tester.tap(
+        find.byKey(const Key('reader-previous-continuation-retry')),
+      );
+      await _settle(tester);
+      await _turnBackward(tester, ReaderDirection.leftToRight);
+      expect(find.text('Chapter 1'), findsWidgets);
+      expect(find.text('4 / 4 · Test source'), findsOneWidget);
+      expect(fixture.source.calls[_chapter(1)], 2);
+    },
+  );
+
+  testWidgets(
+    'stale previous preparation cannot enter a newer picker session',
+    (tester) async {
+      final fixture = await _fixture(tester, chapterCount: 4);
+      final held = Completer<void>();
+      fixture.source.holds[_chapter(1)] = held.future;
+      await fixture.pump(tester, chapter: 2);
+      await tester.tap(find.byKey(const Key('chapter-picker')));
+      await _settle(tester);
+      await tester.tap(find.byKey(Key('chapter-picker-${_chapter(4).value}')));
+      await _settle(tester);
+      held.complete();
+      await _settle(tester);
+      expect(find.text('Chapter 4'), findsWidgets);
+      expect(find.text('1 / 4 · Test source'), findsOneWidget);
+      await _turnBackward(tester, ReaderDirection.leftToRight);
+      expect(find.text('Chapter 3'), findsWidgets);
+      expect(find.text('4 / 4 · Test source'), findsOneWidget);
+      await tester.runAsync(() async {
+        expect(await fixture.resumePage(1), isNull);
+        expect(
+          await fixture.repository.completedChapters(_media),
+          isNot(contains(_chapter(1))),
+        );
+      });
+    },
+  );
 
   testWidgets(
     'vertical scrolling crosses a genuine chapter boundary without replacing the viewport',
@@ -153,9 +305,9 @@ void main() {
       expect(find.byKey(const Key('chapter-picker')), findsOneWidget);
       expect(find.byKey(const Key('previous-chapter')), findsOneWidget);
 
-      // Move the previous chapter wholly offscreen, then let the rolling
-      // window discard it. The visual anchor, not the rebased raw offset,
-      // must stay fixed through the layout correction.
+      // Move the previous chapter wholly offscreen. It remains a lazy neighbor
+      // for backward continuity; neither its retention nor trimming may move
+      // the visible anchor.
       final firstPage = find.byKey(ValueKey((_chapter(2), 0)));
       controller.jumpTo(
         controller.offset +
@@ -168,6 +320,7 @@ void main() {
       await _settle(tester);
       expect(tester.getTopLeft(firstPage).dy, closeTo(anchorBeforeTrim, 1));
       expect(find.byType(SliverList), findsOneWidget);
+      expect(tester.widget<CustomScrollView>(viewport).slivers.length, 4);
       expect(find.text('1 / 4 · Test source'), findsOneWidget);
     },
   );
@@ -184,13 +337,23 @@ void main() {
       await _turnForward(tester, ReaderDirection.leftToRight);
       final chapter = turn ~/ 4 + 1;
       final page = turn % 4;
-      expect(find.text('Chapter $chapter'), findsWidgets);
+      expect(
+        find.text('Chapter $chapter'),
+        findsWidgets,
+        reason:
+            'turn $turn, absolute ${controller.page}, counter ${tester.widget<Text>(find.byKey(const Key('reader-counter'))).data}',
+      );
       expect(find.text('${page + 1} / 4 · Test source'), findsOneWidget);
       expect(tester.widget<PageView>(viewport).controller, same(controller));
-      expect(controller.page, closeTo(page.toDouble(), 0.001));
+      // Absolute indices now include the retained previous chapter. The
+      // visible counter must still be chapter-local, with at most 3 manifests.
+      expect(
+        controller.page,
+        closeTo((page + (chapter > 1 ? 4 : 0)).toDouble(), 0.001),
+      );
       expect(
         tester.widget<PageView>(viewport).childrenDelegate.estimatedChildCount,
-        lessThanOrEqualTo(8),
+        lessThanOrEqualTo(12),
       );
       if (chapter < 3) {
         await tester.runAsync(() async {
@@ -215,6 +378,177 @@ void main() {
       expect(await fixture.resumePage(3), 1);
     });
   });
+
+  testWidgets(
+    'paged window rolls backward and forward without accumulating chapters',
+    (tester) async {
+      final fixture = await _fixture(
+        tester,
+        chapterCount: 6,
+        direction: ReaderDirection.rightToLeft,
+      );
+      await fixture.pump(tester, chapter: 5);
+      final viewport = find.byKey(const Key('paged-reader'));
+      final controller = tester.widget<PageView>(viewport).controller!;
+      for (var step = 1; step <= 16; step++) {
+        await _turnBackward(tester, ReaderDirection.rightToLeft);
+        final position = 16 - step;
+        expect(find.text('Chapter ${position ~/ 4 + 1}'), findsWidgets);
+        expect(
+          find.text('${position % 4 + 1} / 4 · Test source'),
+          findsOneWidget,
+        );
+        expect(tester.widget<PageView>(viewport).controller, same(controller));
+        expect(
+          tester
+              .widget<PageView>(viewport)
+              .childrenDelegate
+              .estimatedChildCount,
+          lessThanOrEqualTo(12),
+        );
+        expect(find.byType(Image).evaluate().length, lessThan(8));
+      }
+      await _turnBackward(tester, ReaderDirection.rightToLeft);
+      expect(find.text('1 / 4 · Test source'), findsOneWidget);
+      for (var step = 1; step <= 16; step++) {
+        await _turnForward(tester, ReaderDirection.rightToLeft);
+        expect(find.text('Chapter ${step ~/ 4 + 1}'), findsWidgets);
+        expect(find.text('${step % 4 + 1} / 4 · Test source'), findsOneWidget);
+        expect(
+          tester
+              .widget<PageView>(viewport)
+              .childrenDelegate
+              .estimatedChildCount,
+          lessThanOrEqualTo(12),
+        );
+      }
+      expect(fixture.source.calls.containsKey(_chapter(6)), isFalse);
+      await tester.runAsync(() async {
+        expect(
+          (await fixture.database.mangaProgress(_media))?.chapterId,
+          _chapter(5),
+        );
+        expect(await fixture.resumePage(5), 0);
+      });
+    },
+  );
+
+  testWidgets(
+    'vertical window rolls its origin in both directions without moving the reading anchor',
+    (tester) async {
+      final fixture = await _fixture(
+        tester,
+        mode: ReaderMode.vertical,
+        chapterCount: 5,
+      );
+      await fixture.pump(tester, chapter: 4);
+      final viewport = find.byKey(const Key('vertical-reader'));
+      final controller = tester.widget<ScrollView>(viewport).controller!;
+      var active = 4;
+      for (var step = 0; step < 60 && active > 1; step++) {
+        await tester.drag(viewport, const Offset(0, 420));
+        await tester.pump();
+        // The warmed last page is a stable anchor during a chapter transition,
+        // even when the old origin falls outside the three-chapter window.
+        final previousLast = find.byKey(ValueKey((_chapter(active - 1), 3)));
+        final before = previousLast.evaluate().isEmpty
+            ? null
+            : tester.getTopLeft(previousLast).dy;
+        await _settle(tester, attempts: 4);
+        expect(
+          tester.widget<ScrollView>(viewport).controller,
+          same(controller),
+        );
+        expect(
+          tester.widget<CustomScrollView>(viewport).slivers.length,
+          lessThanOrEqualTo(6),
+        );
+        final progress = await tester.runAsync(
+          () => fixture.database.mangaProgress(_media),
+        );
+        if (progress?.chapterId == _chapter(active - 1)) {
+          if (before != null && previousLast.evaluate().isNotEmpty) {
+            expect(tester.getTopLeft(previousLast).dy, closeTo(before, 1));
+          }
+          active--;
+          expect(find.text('4 / 4 · Test source'), findsOneWidget);
+        }
+      }
+      expect(active, 1);
+      for (var step = 0; step < 65 && active < 4; step++) {
+        await tester.drag(viewport, const Offset(0, -420));
+        await _settle(tester, attempts: 4);
+        expect(
+          tester.widget<ScrollView>(viewport).controller,
+          same(controller),
+        );
+        expect(
+          tester.widget<CustomScrollView>(viewport).slivers.length,
+          lessThanOrEqualTo(6),
+        );
+        final progress = await tester.runAsync(
+          () => fixture.database.mangaProgress(_media),
+        );
+        if (progress?.chapterId == _chapter(active + 1)) {
+          active++;
+          expect(find.text('1 / 4 · Test source'), findsOneWidget);
+        }
+      }
+      expect(active, 4);
+      expect(fixture.source.calls.containsKey(_chapter(5)), isFalse);
+    },
+  );
+
+  testWidgets(
+    '1002 chapters opened in the middle prepare only immediate neighbors',
+    (tester) async {
+      final fixture = await _fixture(tester, chapterCount: 1002);
+      await tester.runAsync(() async {
+        await fixture.seedResume(500, 1);
+        await fixture.seedResume(502, 2);
+      });
+      await fixture.pump(tester, chapter: 501, attempts: 30);
+      expect(fixture.source.calls, {_chapter(501): 1, _chapter(500): 1});
+      expect(
+        fixture.source.loadedPages.where(
+          (page) => page.startsWith('${_chapter(500).value}-'),
+        ),
+        ['${_chapter(500).value}-3'],
+        reason:
+            'Only the previous chapter entry image is warmed, not all pages.',
+      );
+      await tester.runAsync(() async {
+        expect(await fixture.database.mangaProgress(_media), isNull);
+        expect(await fixture.resumePage(500), 1);
+      });
+      final controller = tester
+          .widget<PageView>(find.byKey(const Key('paged-reader')))
+          .controller!;
+      controller.jumpToPage(
+        6,
+      ); // Previous chapter's four pages + active page 3.
+      await _settle(tester, attempts: 20);
+      expect(fixture.source.calls, {
+        _chapter(501): 1,
+        _chapter(500): 1,
+        _chapter(502): 1,
+      });
+      expect(fixture.source.loadedPages.length, lessThanOrEqualTo(8));
+      expect(
+        tester
+            .widget<PageView>(find.byKey(const Key('paged-reader')))
+            .childrenDelegate
+            .estimatedChildCount,
+        12,
+      );
+      expect(find.byType(Image).evaluate().length, lessThan(8));
+      await tester.runAsync(() async {
+        expect(await fixture.resumePage(500), 1);
+        expect(await fixture.resumePage(502), 2);
+        expect(await fixture.repository.completedChapters(_media), isEmpty);
+      });
+    },
+  );
 
   testWidgets(
     'vertical boundary can be crossed back before the old chapter leaves view',
@@ -281,6 +615,42 @@ void main() {
     expect(find.text('4 / 4 · Test source'), findsOneWidget);
     expect(find.byKey(const Key('chapter-picker')), findsOneWidget);
   });
+
+  testWidgets(
+    'unreadable previous chapter is not skipped and late preparation is harmless after disposal',
+    (tester) async {
+      final fixture = await _fixture(tester, chapterCount: 4, unavailable: {2});
+      await fixture.pump(tester, chapter: 3);
+      await _turnBackward(tester, ReaderDirection.leftToRight);
+      expect(find.text('Chapter 3'), findsWidgets);
+      expect(find.text('1 / 4 · Test source'), findsOneWidget);
+      expect(fixture.source.calls, {_chapter(3): 1});
+
+      // Open chapter 4 normally, holding its readable previous manifest until
+      // after the route is disposed. Only active positions may be flushed.
+      final held = Completer<void>();
+      fixture.source.holds[_chapter(3)] = held.future;
+      await tester.tap(find.byKey(const Key('chapter-picker')));
+      await _settle(tester);
+      await tester.tap(find.byKey(Key('chapter-picker-${_chapter(4).value}')));
+      await _settle(tester);
+      expect(fixture.source.calls[_chapter(3)], 2);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await _settle(tester);
+      held.complete();
+      await _settle(tester);
+      expect(tester.takeException(), isNull);
+      await tester.runAsync(() async {
+        expect(
+          (await fixture.database.mangaProgress(_media))?.chapterId,
+          _chapter(4),
+        );
+        expect(await fixture.resumePage(3), 0);
+        expect(await fixture.resumePage(2), isNull);
+        expect(await fixture.repository.completedChapters(_media), isEmpty);
+      });
+    },
+  );
 
   testWidgets('the last canonical chapter has no phantom continuation', (
     tester,
@@ -439,6 +809,18 @@ Future<void> _turnForward(
   await _settle(tester);
 }
 
+Future<void> _turnBackward(
+  WidgetTester tester,
+  ReaderDirection direction,
+) async {
+  await tester.fling(
+    find.byKey(const Key('paged-reader')),
+    Offset(direction == ReaderDirection.leftToRight ? 600 : -600, 0),
+    1200,
+  );
+  await _settle(tester);
+}
+
 class _ContinuityFixture {
   const _ContinuityFixture(
     this.temp,
@@ -525,10 +907,14 @@ class _ContinuityFixture {
     );
   }
 
-  Future<void> pump(WidgetTester tester, {int attempts = 10}) async {
+  Future<void> pump(
+    WidgetTester tester, {
+    int attempts = 10,
+    int chapter = 1,
+  }) async {
     final request = ReaderSessionRequest(
       mediaId: _media,
-      chapterId: _chapter(1),
+      chapterId: _chapter(chapter),
     );
     final initial = (await tester.runAsync(() => repository.open(request)))!;
     await tester.pumpWidget(
