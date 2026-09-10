@@ -33,7 +33,12 @@ void main() {
         preferences = ReaderPreferencesStore(
           file: File('${temp.path}/settings.json'),
         );
-        await preferences.save(const ReaderPreferences(mode: ReaderMode.paged));
+        await preferences.save(
+          const ReaderPreferences(
+            mode: ReaderMode.paged,
+            direction: ReaderDirection.leftToRight,
+          ),
+        );
       });
       final repository = ReaderRepository(
         database: database,
@@ -450,7 +455,12 @@ class _ReaderWidgetFixture {
     final preferences = ReaderPreferencesStore(
       file: File('${temp.path}/settings.json'),
     );
-    await preferences.save(const ReaderPreferences(mode: ReaderMode.paged));
+    await preferences.save(
+      const ReaderPreferences(
+        mode: ReaderMode.paged,
+        direction: ReaderDirection.leftToRight,
+      ),
+    );
     return _ReaderWidgetFixture(
       temp: temp,
       database: database,

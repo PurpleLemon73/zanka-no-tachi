@@ -20,8 +20,8 @@ enum ReaderFit { width, contain }
 
 class ReaderPreferences {
   const ReaderPreferences({
-    this.mode = ReaderMode.vertical,
-    this.direction = ReaderDirection.leftToRight,
+    this.mode = ReaderMode.paged,
+    this.direction = ReaderDirection.rightToLeft,
     this.fit = ReaderFit.width,
   });
 
