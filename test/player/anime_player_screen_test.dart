@@ -27,6 +27,477 @@ const _episodeTwo = CanonicalEpisodeId('player-ui-episode-2');
 const _episodeThree = CanonicalEpisodeId('player-ui-episode-3');
 
 void main() {
+  testWidgets(
+    'TV directional input skips disabled controls and an unavailable timeline',
+    (tester) async {
+      final fixture = (await tester.runAsync(
+        () => _PlayerFixture.create(episodeCount: 1),
+      ))!;
+      _disposeFixtureAfterScreen(tester, fixture);
+      final engines = _EngineFactory(
+        capabilities: const PlaybackCapabilities(
+          canSeek: false,
+          canSetPlaybackRate: false,
+        ),
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) => MediaQuery(
+              data: MediaQuery.of(
+                context,
+              ).copyWith(navigationMode: NavigationMode.directional),
+              child: AnimePlayerScreen(
+                repository: fixture.repository,
+                isTv: true,
+                engineRegistry: PlaybackEngineRegistry(
+                  productionBuilder: engines.create,
+                ),
+                request: const PlaybackSessionRequest(
+                  mediaId: _mediaId,
+                  episodeId: _episodeOne,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await _pumpUntilReady(tester, engines, 1);
+      await tester.pumpAndSettle();
+      expect(_focusedTooltip(tester), 'Pause');
+      await _remote(tester, LogicalKeyboardKey.arrowLeft);
+      await _remote(tester, LogicalKeyboardKey.arrowLeft);
+      expect(_focusedTooltip(tester), 'Back 10 seconds');
+      for (var index = 0; index < 3; index++) {
+        await _remote(tester, LogicalKeyboardKey.arrowRight);
+      }
+      expect(_focusedTooltip(tester), 'Forward 10 seconds');
+      await _remote(tester, LogicalKeyboardKey.arrowDown);
+      expect(_focusedTooltip(tester), 'Fullscreen');
+      await _remote(tester, LogicalKeyboardKey.arrowUp);
+      expect(_focusedTooltip(tester), 'Pause');
+    },
+  );
+
+  testWidgets(
+    'TV D-pad traverses rows, activates controls and adjusts timeline',
+    (tester) async {
+      final fixture = (await tester.runAsync(
+        () => _PlayerFixture.create(episodeCount: 3),
+      ))!;
+      _disposeFixtureAfterScreen(tester, fixture);
+      _recordSystemUiCalls(tester);
+      final engines = _EngineFactory();
+      await _pumpPlayer(tester, fixture, engines, _episodeTwo, isTv: true);
+      final engine = engines.created.single;
+      expect(_focusedTooltip(tester), 'Pause');
+      await _remote(tester, LogicalKeyboardKey.select);
+      expect(engine.state.value.isPlaying, isFalse);
+      expect(_focusedTooltip(tester), 'Play');
+      await _remote(tester, LogicalKeyboardKey.enter);
+      expect(engine.state.value.isPlaying, isTrue);
+      await _remote(tester, LogicalKeyboardKey.arrowRight);
+      expect(_focusedTooltip(tester), 'Forward 10 seconds');
+      await _remote(tester, LogicalKeyboardKey.select);
+      expect(engine.seekPositions.last, const Duration(seconds: 10));
+      await _remote(tester, LogicalKeyboardKey.arrowLeft);
+      await _remote(tester, LogicalKeyboardKey.arrowLeft);
+      expect(_focusedTooltip(tester), 'Back 10 seconds');
+      await _remote(tester, LogicalKeyboardKey.enter);
+      expect(engine.seekPositions.last, Duration.zero);
+      await _remote(tester, LogicalKeyboardKey.arrowLeft);
+      expect(_focusedTooltip(tester), 'Previous episode');
+      await _remote(tester, LogicalKeyboardKey.arrowLeft);
+      expect(_focusedTooltip(tester), 'Previous episode');
+      for (var i = 0; i < 4; i++) {
+        await _remote(tester, LogicalKeyboardKey.arrowRight);
+      }
+      expect(_focusedTooltip(tester), 'Next episode');
+      await _remote(tester, LogicalKeyboardKey.arrowUp);
+      for (final label in ['Episodes', 'Source', 'Display mode', 'Settings']) {
+        expect(_focusedTooltip(tester), label);
+        await _remote(tester, LogicalKeyboardKey.arrowRight);
+      }
+      await _remote(tester, LogicalKeyboardKey.arrowDown);
+      expect(_focusedTooltip(tester), 'Pause');
+      await _remote(tester, LogicalKeyboardKey.arrowDown);
+      expect(
+        tester.widget<Slider>(find.byType(Slider)).focusNode!.hasFocus,
+        isTrue,
+      );
+      final beforeSeek = engine.state.value.position;
+      await _remote(tester, LogicalKeyboardKey.arrowRight);
+      expect(engine.state.value.position, greaterThan(beforeSeek));
+      expect(
+        tester.widget<Slider>(find.byType(Slider)).focusNode!.hasFocus,
+        isTrue,
+      );
+      await _remote(tester, LogicalKeyboardKey.arrowDown);
+      expect(_focusedTooltip(tester), 'Fullscreen');
+      await _remote(tester, LogicalKeyboardKey.select);
+      expect(find.byType(AppBar), findsNothing);
+      expect(_focusedTooltip(tester), 'Exit fullscreen');
+      await _remote(tester, LogicalKeyboardKey.arrowUp);
+      expect(
+        tester.widget<Slider>(find.byType(Slider)).focusNode!.hasFocus,
+        isTrue,
+      );
+      await _remote(tester, LogicalKeyboardKey.arrowUp);
+      expect(_focusedTooltip(tester), 'Pause');
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.byType(AppBar), findsOneWidget);
+      expect(find.byType(AnimePlayerScreen), findsOneWidget);
+      expect(_controlsOpacity(tester), 0);
+      await _remote(tester, LogicalKeyboardKey.arrowUp);
+      await _remote(tester, LogicalKeyboardKey.arrowLeft);
+      await _remote(tester, LogicalKeyboardKey.arrowLeft);
+      expect(_focusedTooltip(tester), 'Previous episode');
+      await _remote(tester, LogicalKeyboardKey.select);
+      await _pumpUntilReady(tester, engines, 2);
+      await tester.pumpAndSettle();
+      expect(engines.created.last.openedExternalIds, ['episode-1']);
+    },
+  );
+
+  testWidgets(
+    'TV idle hide parks focus; interaction reveals and resets timeout',
+    (tester) async {
+      final fixture = (await tester.runAsync(
+        () => _PlayerFixture.create(episodeCount: 1),
+      ))!;
+      _disposeFixtureAfterScreen(tester, fixture);
+      final engines = _EngineFactory();
+      await _pumpPlayer(tester, fixture, engines, _episodeOne, isTv: true);
+      await tester.pump(const Duration(seconds: 4));
+      await _remote(tester, LogicalKeyboardKey.arrowRight);
+      expect(_focusedTooltip(tester), 'Forward 10 seconds');
+      await tester.pump(const Duration(seconds: 4));
+      expect(_controlsOpacity(tester), 1);
+      expect(_focusedTooltip(tester), 'Forward 10 seconds');
+      await tester.pump(const Duration(seconds: 2));
+      expect(_controlsOpacity(tester), 0);
+      expect(_focusedTooltip(tester), isNull);
+      expect(
+        tester
+            .widget<IconButton>(_iconButtonForTooltip('Pause'))
+            .focusNode!
+            .canRequestFocus,
+        isFalse,
+      );
+      await _remote(tester, LogicalKeyboardKey.arrowUp);
+      expect(_controlsOpacity(tester), 1);
+      expect(_focusedTooltip(tester), 'Pause');
+      await _remote(tester, LogicalKeyboardKey.select);
+      await tester.pump(const Duration(seconds: 6));
+      expect(_controlsOpacity(tester), 1);
+      expect(_focusedTooltip(tester), 'Play');
+      await _remote(tester, LogicalKeyboardKey.arrowLeft);
+      await _remote(tester, LogicalKeyboardKey.arrowLeft);
+      expect(_focusedTooltip(tester), 'Back 10 seconds');
+      await _remote(tester, LogicalKeyboardKey.arrowRight);
+      await _remote(tester, LogicalKeyboardKey.arrowRight);
+      await _remote(tester, LogicalKeyboardKey.arrowRight);
+      expect(_focusedTooltip(tester), 'Forward 10 seconds');
+    },
+  );
+
+  testWidgets(
+    'TV app bar Back is reachable and keeps the existing Back contract',
+    (tester) async {
+      final fixture = (await tester.runAsync(
+        () => _PlayerFixture.create(episodeCount: 1),
+      ))!;
+      _disposeFixtureAfterScreen(tester, fixture);
+      _recordSystemUiCalls(tester);
+      final engines = _EngineFactory();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) {
+              return Scaffold(
+                body: TextButton(
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => AnimePlayerScreen(
+                        repository: fixture.repository,
+                        isTv: true,
+                        engineRegistry: PlaybackEngineRegistry(
+                          productionBuilder: engines.create,
+                        ),
+                        request: const PlaybackSessionRequest(
+                          mediaId: _mediaId,
+                          episodeId: _episodeOne,
+                        ),
+                      ),
+                    ),
+                  ),
+                  child: const Text('Open player'),
+                ),
+              );
+            },
+          ),
+        ),
+      );
+      await tester.tap(find.text('Open player'));
+      await _pumpUntilReady(tester, engines, 1);
+      await tester.pumpAndSettle();
+      await _remote(tester, LogicalKeyboardKey.arrowUp);
+      expect(_focusedTooltip(tester), 'Episodes');
+      await _remote(tester, LogicalKeyboardKey.arrowUp);
+      expect(_focusedTooltip(tester), 'Back');
+      await _remote(tester, LogicalKeyboardKey.arrowDown);
+      expect(_focusedTooltip(tester), 'Episodes');
+      await _remote(tester, LogicalKeyboardKey.arrowUp);
+      await _remote(tester, LogicalKeyboardKey.select);
+      expect(find.byType(AnimePlayerScreen), findsOneWidget);
+      expect(_controlsOpacity(tester), 0);
+      await _remote(tester, LogicalKeyboardKey.arrowUp);
+      await _remote(tester, LogicalKeyboardKey.arrowDown);
+      await _remote(tester, LogicalKeyboardKey.arrowDown);
+      expect(_focusedTooltip(tester), 'Fullscreen');
+      await _remote(tester, LogicalKeyboardKey.select);
+      expect(find.byType(AppBar), findsNothing);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.byType(AppBar), findsOneWidget);
+      expect(find.byType(AnimePlayerScreen), findsOneWidget);
+      expect(_controlsOpacity(tester), 0);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.text('Open player'), findsOneWidget);
+      expect(find.byType(AnimePlayerScreen), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'TV Replay activates from completion and returns focus to playback',
+    (tester) async {
+      final fixture = (await tester.runAsync(
+        () => _PlayerFixture.create(episodeCount: 2),
+      ))!;
+      _disposeFixtureAfterScreen(tester, fixture);
+      final engines = _EngineFactory();
+      await _pumpPlayer(tester, fixture, engines, _episodeOne, isTv: true);
+      final engine = engines.created.single;
+      engine.complete();
+      await tester.pumpAndSettle();
+      await _remote(tester, LogicalKeyboardKey.arrowLeft);
+      expect(_buttonHasFocus(tester, 'Replay'), isTrue);
+      await _remote(tester, LogicalKeyboardKey.select);
+      expect(engine.seekPositions.last, Duration.zero);
+      expect(engine.state.value.isPlaying, isTrue);
+      expect(find.text('Episode complete'), findsNothing);
+      expect(_focusedTooltip(tester), 'Pause');
+      expect(engines.created, hasLength(1));
+    },
+  );
+
+  testWidgets(
+    'TV sheet dismiss returns to its control; completion wins focus on return',
+    (tester) async {
+      final fixture = (await tester.runAsync(
+        () => _PlayerFixture.create(episodeCount: 2),
+      ))!;
+      _disposeFixtureAfterScreen(tester, fixture);
+      final engines = _EngineFactory();
+      await _pumpPlayer(tester, fixture, engines, _episodeOne, isTv: true);
+      await _remote(tester, LogicalKeyboardKey.arrowUp);
+      expect(_focusedTooltip(tester), 'Episodes');
+      await _remote(tester, LogicalKeyboardKey.select);
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 30)),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        Focus.of(tester.element(find.text('Episode 1').last)).hasFocus,
+        isTrue,
+      );
+      await tester.pump(const Duration(seconds: 6));
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(_focusedTooltip(tester), 'Episodes');
+      expect(_controlsOpacity(tester), 1);
+      await _remote(tester, LogicalKeyboardKey.arrowRight);
+      await _remote(tester, LogicalKeyboardKey.arrowRight);
+      expect(_focusedTooltip(tester), 'Display mode');
+      await _remote(tester, LogicalKeyboardKey.select);
+      await tester.pumpAndSettle();
+      expect(_buttonHasFocus(tester, 'Reset to Auto'), isTrue);
+      await tester.pump(const Duration(seconds: 6));
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(_focusedTooltip(tester), 'Display mode');
+      expect(_controlsOpacity(tester), 1);
+      await _remote(tester, LogicalKeyboardKey.select);
+      await tester.pumpAndSettle();
+      engines.created.single.complete();
+      await tester.pumpAndSettle();
+      expect(_buttonHasFocus(tester, 'Reset to Auto'), isTrue);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(_buttonHasFocus(tester, 'Next Episode'), isTrue);
+    },
+  );
+
+  testWidgets(
+    'TV episode picker Select opens the chosen episode at its own resume',
+    (tester) async {
+      final fixture = (await tester.runAsync(
+        () => _PlayerFixture.create(episodeCount: 2),
+      ))!;
+      _disposeFixtureAfterScreen(tester, fixture);
+      await tester.runAsync(() async {
+        final destination = await fixture.repository.open(
+          const PlaybackSessionRequest(
+            mediaId: _mediaId,
+            episodeId: _episodeTwo,
+          ),
+        );
+        await fixture.repository.savePosition(
+          destination,
+          const Duration(seconds: 43),
+          const Duration(seconds: 100),
+        );
+      });
+      final engines = _EngineFactory();
+      await _pumpPlayer(tester, fixture, engines, _episodeOne, isTv: true);
+      await _remote(tester, LogicalKeyboardKey.arrowUp);
+      await _remote(tester, LogicalKeyboardKey.select);
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 30)),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        Focus.of(tester.element(find.text('Episode 1').last)).hasFocus,
+        isTrue,
+      );
+      await _remote(tester, LogicalKeyboardKey.arrowDown);
+      expect(Focus.of(tester.element(find.text('Episode 2'))).hasFocus, isTrue);
+      await _remote(tester, LogicalKeyboardKey.select);
+      await _pumpUntilReady(tester, engines, 2);
+      await tester.pumpAndSettle();
+      expect(engines.created.last.openedExternalIds, ['episode-2']);
+      expect(engines.created.last.openPositions, [const Duration(seconds: 43)]);
+      expect(_focusedTooltip(tester), 'Pause');
+    },
+  );
+
+  testWidgets(
+    'TV fullscreen Back precedes completion dismissal without losing focus',
+    (tester) async {
+      final fixture = (await tester.runAsync(
+        () => _PlayerFixture.create(episodeCount: 2),
+      ))!;
+      _disposeFixtureAfterScreen(tester, fixture);
+      final systemCalls = _recordSystemUiCalls(tester);
+      final engines = _EngineFactory();
+      await _pumpPlayer(tester, fixture, engines, _episodeOne, isTv: true);
+      _invokeIconButton(tester, 'Fullscreen');
+      await tester.pumpAndSettle();
+      engines.created.single.complete();
+      await tester.pumpAndSettle();
+      expect(_buttonHasFocus(tester, 'Next Episode'), isTrue);
+      systemCalls.clear();
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.byType(AppBar), findsOneWidget);
+      expect(find.text('Episode complete'), findsOneWidget);
+      expect(_buttonHasFocus(tester, 'Next Episode'), isTrue);
+      expect(systemCalls.first.arguments, 'SystemUiMode.edgeToEdge');
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.text('Episode complete'), findsNothing);
+      expect(_focusedTooltip(tester), 'Play');
+      expect(find.byType(AnimePlayerScreen), findsOneWidget);
+    },
+  );
+
+  testWidgets('TV queued completion focus is safe when the route is disposed', (
+    tester,
+  ) async {
+    final fixture = (await tester.runAsync(
+      () => _PlayerFixture.create(episodeCount: 1),
+    ))!;
+    _disposeFixtureAfterScreen(tester, fixture);
+    final engines = _EngineFactory();
+    await _pumpPlayer(tester, fixture, engines, _episodeOne, isTv: true);
+    engines.created.single.complete();
+    await tester.pump();
+    await tester.pumpWidget(
+      const MaterialApp(home: Scaffold(body: Text('Other route'))),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Other route'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    expect(_focusedTooltip(tester), isNull);
+  });
+
+  testWidgets('TV completion takes focus from controls and Select opens Next', (
+    tester,
+  ) async {
+    final fixture = (await tester.runAsync(
+      () => _PlayerFixture.create(episodeCount: 2),
+    ))!;
+    _disposeFixtureAfterScreen(tester, fixture);
+    await tester.runAsync(() async {
+      final destination = await fixture.repository.open(
+        const PlaybackSessionRequest(mediaId: _mediaId, episodeId: _episodeTwo),
+      );
+      await fixture.repository.savePosition(
+        destination,
+        const Duration(seconds: 43),
+        const Duration(seconds: 100),
+      );
+    });
+    final engines = _EngineFactory();
+    await _pumpPlayer(tester, fixture, engines, _episodeOne, isTv: true);
+    expect(_focusedTooltip(tester), isIn(['Play', 'Pause']));
+    engines.created.single.complete();
+    await tester.pumpAndSettle();
+    expect(_buttonHasFocus(tester, 'Next Episode'), isTrue);
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+    await tester.pump();
+    expect(_buttonHasFocus(tester, 'Replay'), isTrue);
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump();
+    expect(_buttonHasFocus(tester, 'Next Episode'), isTrue);
+    await tester.sendKeyEvent(LogicalKeyboardKey.select);
+    await _pumpUntilReady(tester, engines, 2);
+    await tester.pumpAndSettle();
+    expect(engines.created.last.openedExternalIds, ['episode-2']);
+    expect(engines.created.last.openPositions, [Duration.zero]);
+    expect(
+      (await fixture.database.animeSourcePlaybackResume(
+        _providerId,
+        'episode-2',
+      ))!.position,
+      const Duration(seconds: 43),
+    );
+    expect(_focusedTooltip(tester), isIn(['Play', 'Pause']));
+  });
+
+  testWidgets(
+    'TV final completion focuses Replay and Back returns to controls',
+    (tester) async {
+      final fixture = (await tester.runAsync(
+        () => _PlayerFixture.create(episodeCount: 1),
+      ))!;
+      _disposeFixtureAfterScreen(tester, fixture);
+      final engines = _EngineFactory();
+      await _pumpPlayer(tester, fixture, engines, _episodeOne, isTv: true);
+      engines.created.single.complete();
+      await tester.pumpAndSettle();
+      expect(find.text('End of available episodes'), findsOneWidget);
+      expect(_buttonHasFocus(tester, 'Replay'), isTrue);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.text('Episode complete'), findsNothing);
+      expect(find.byType(AnimePlayerScreen), findsOneWidget);
+      expect(_focusedTooltip(tester), 'Play');
+    },
+  );
+
   for (final isTv in [false, true]) {
     testWidgets(
       'fullscreen episode navigation preserves presentation and resume (${isTv ? 'TV' : 'mobile'})',
@@ -243,6 +714,8 @@ void main() {
       );
       final engines = _EngineFactory();
       await _pumpPlayer(tester, fixture, engines, _episodeOne);
+
+      expect(_focusedTooltip(tester), isNull);
       _invokeIconButton(tester, 'Fullscreen');
       await tester.pump();
       expect(systemCalls.single.arguments, 'SystemUiMode.immersiveSticky');
@@ -401,11 +874,14 @@ void main() {
       );
 
       final last = engines.created.last;
-      tester.widget<OutlinedButton>(replayButton).onPressed!.call();
+      await tester.tap(find.text('Replay'));
+      // The existing surface double-tap recognizer must resolve a single tap.
+      await tester.pump(const Duration(milliseconds: 350));
       await tester.pump();
       expect(last.seekPositions, contains(Duration.zero));
       expect(last.playCalls, greaterThan(0));
       expect(last.state.value.phase, PlaybackEnginePhase.ready);
+      expect(find.text('Episode complete'), findsNothing);
 
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump();
@@ -709,6 +1185,28 @@ void _expectRoundedFocusStyle(ButtonStyle? style, Matcher shape) {
     isNot(style.backgroundColor?.resolve(idle)),
   );
 }
+
+bool _buttonHasFocus(WidgetTester tester, String label) {
+  final element = tester.element(find.text(label));
+  return Focus.of(element).hasFocus;
+}
+
+Future<void> _remote(WidgetTester tester, LogicalKeyboardKey key) async {
+  await tester.sendKeyEvent(key);
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 200));
+}
+
+double _controlsOpacity(WidgetTester tester) => tester
+    .widget<AnimatedOpacity>(
+      find
+          .ancestor(
+            of: _iconButtonForTooltip('Episodes'),
+            matching: find.byType(AnimatedOpacity),
+          )
+          .first,
+    )
+    .opacity;
 
 String? _focusedTooltip(WidgetTester tester) {
   final context = tester.binding.focusManager.primaryFocus?.context;

@@ -113,6 +113,21 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
   late final AndroidMediaBridge mediaBridge =
       widget.mediaBridge ?? AndroidMediaBridge();
   final FocusNode remoteFocus = FocusNode(debugLabel: 'TV player remote');
+  final FocusNode backFocus = FocusNode(debugLabel: 'TV app bar Back');
+  final FocusScopeNode controlsFocus = FocusScopeNode(
+    debugLabel: 'TV controls',
+  );
+  final FocusScopeNode completionFocus = FocusScopeNode(
+    debugLabel: 'TV completion',
+    traversalEdgeBehavior: TraversalEdgeBehavior.closedLoop,
+    directionalTraversalEdgeBehavior: TraversalEdgeBehavior.closedLoop,
+  );
+  final Map<_TvControl, FocusNode> tvControls = {
+    for (final control in _TvControl.values)
+      control: FocusNode(debugLabel: 'TV ${control.name}'),
+  };
+  bool _sheetOpen = false;
+  int _focusGeneration = 0;
   int lastNativeUpdateSecond = -1;
   bool? lastNativePlaying;
 
@@ -200,6 +215,7 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
         );
       }
       _scheduleHide();
+      _requestTvFocus();
     } on Object catch (value) {
       await player?.dispose();
       if (allowMediaRetry && opened != null && !opened.manifest.isLocalFile) {
@@ -262,6 +278,8 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
       completionVisible = true;
       controlsVisible = true;
     });
+    if (widget.isTv) hideTimer?.cancel();
+    _requestTvFocus();
     if (current.preferences.autoplayNext &&
         nextEpisode?.openableBindings.isNotEmpty == true) {
       await _openAdjacent(1);
@@ -270,11 +288,67 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
 
   void _scheduleHide() {
     hideTimer?.cancel();
+    if (widget.isTv && (completionVisible || _sheetOpen)) return;
     if (engine?.state.value.isPlaying ?? false) {
       hideTimer = Timer(Duration(seconds: widget.isTv ? 5 : 3), () {
-        if (mounted) setState(() => controlsVisible = false);
+        if (!mounted) return;
+        if (widget.isTv) {
+          if (completionVisible ||
+              _sheetOpen ||
+              !(engine?.state.value.isPlaying ?? false)) {
+            return;
+          }
+          // Idle timeout is an explicit hand-off, never an invisible focused
+          // button. The next remote interaction reveals and focuses controls.
+          _hideTvControls();
+        } else {
+          setState(() => controlsVisible = false);
+        }
       });
     }
+  }
+
+  void _requestTvFocus([FocusNode? preferred]) {
+    if (!widget.isTv) return;
+    final ticket = ++_focusGeneration;
+    final player = engine;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted ||
+          ticket != _focusGeneration ||
+          !identical(player, engine) ||
+          engine == null ||
+          error != null ||
+          _sheetOpen ||
+          _navigatingEpisode ||
+          !controlsVisible ||
+          ModalRoute.of(context)?.isCurrent != true) {
+        return;
+      }
+      final target = completionVisible
+          ? tvControls[nextEpisode?.openableBindings.isNotEmpty == true
+                ? _TvControl.completionNext
+                : _TvControl.replay]!
+          : (preferred?.context != null && preferred!.canRequestFocus
+                ? preferred
+                : tvControls[_TvControl.toggle]!);
+      target.requestFocus();
+    });
+  }
+
+  void _hideTvControls() {
+    _focusGeneration++;
+    hideTimer?.cancel();
+    remoteFocus.requestFocus();
+    setState(() => controlsVisible = false);
+  }
+
+  void _dismissTvCompletion() {
+    setState(() {
+      completionVisible = false;
+      controlsVisible = true;
+    });
+    _requestTvFocus();
+    _scheduleHide();
   }
 
   Future<void> _flush() async {
@@ -304,7 +378,12 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
 
   Future<void> _pause() async {
     await engine?.pause();
-    if (mounted && widget.isTv) setState(() => controlsVisible = true);
+    if (mounted && widget.isTv) {
+      final wasVisible = controlsVisible;
+      setState(() => controlsVisible = true);
+      hideTimer?.cancel();
+      if (!wasVisible) _requestTvFocus();
+    }
   }
 
   Future<void> _togglePlayback() async {
@@ -344,11 +423,16 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
   }
 
   KeyEventResult _handleRemoteKey(FocusNode _, KeyEvent event) {
+    if (widget.isTv && event is KeyRepeatEvent && controlsVisible) {
+      _scheduleHide();
+      return KeyEventResult.ignored;
+    }
     if (!widget.isTv || event is! KeyDownEvent) return KeyEventResult.ignored;
     final command = tvPlayerCommandFor(event.logicalKey);
     if (command == null) return KeyEventResult.ignored;
     final wasVisible = controlsVisible;
     setState(() => controlsVisible = true);
+    if (!wasVisible) _requestTvFocus();
     if (wasVisible &&
         {
           LogicalKeyboardKey.arrowLeft,
@@ -435,6 +519,13 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
     saveTimer?.cancel();
     engine?.state.removeListener(_engineChanged);
     remoteFocus.dispose();
+    backFocus.dispose();
+    _focusGeneration++;
+    controlsFocus.dispose();
+    completionFocus.dispose();
+    for (final node in tvControls.values) {
+      node.dispose();
+    }
     unawaited(_flush());
     unawaited(engine?.dispose());
     unawaited(mediaBridge.deactivate());
@@ -444,11 +535,22 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
 
   @override
   Widget build(BuildContext context) => PopScope(
-    canPop: !fullscreen && (!widget.isTv || !controlsVisible),
+    canPop:
+        !fullscreen &&
+        (!widget.isTv || (!controlsVisible && !completionVisible)),
     onPopInvokedWithResult: (didPop, _) {
-      if (!didPop && fullscreen) unawaited(_toggleFullscreen());
-      if (!didPop && !fullscreen && widget.isTv && controlsVisible) {
-        setState(() => controlsVisible = false);
+      if (didPop) return;
+      if (fullscreen) {
+        unawaited(_toggleFullscreen());
+        // Keep the established TV contract: outside completion, the first Back
+        // exits fullscreen and hides controls; the second can leave the route.
+        if (widget.isTv && !completionVisible && controlsVisible) {
+          _hideTvControls();
+        }
+      } else if (widget.isTv && completionVisible) {
+        _dismissTvCompletion();
+      } else if (widget.isTv && controlsVisible) {
+        _hideTvControls();
       }
     },
     child: Scaffold(
@@ -458,13 +560,31 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
           : AppBar(
               backgroundColor: Colors.black,
               foregroundColor: Colors.white,
+              leading: widget.isTv && Navigator.of(context).canPop()
+                  ? Focus(
+                      focusNode: backFocus,
+                      canRequestFocus: false,
+                      skipTraversal: true,
+                      onKeyEvent: (_, event) {
+                        if (event is KeyDownEvent &&
+                            event.logicalKey == LogicalKeyboardKey.arrowDown) {
+                          setState(() => controlsVisible = true);
+                          _requestTvFocus(tvControls[_TvControl.episodes]);
+                          _scheduleHide();
+                          return KeyEventResult.handled;
+                        }
+                        return KeyEventResult.ignored;
+                      },
+                      child: const BackButton(),
+                    )
+                  : null,
               title: Text(session?.episode.label.rawLabel ?? 'Player'),
             ),
       body: Focus(
         focusNode: remoteFocus,
-        // This node observes bubbled remote keys; it must not steal primary
-        // focus from the visible TV controls.
-        canRequestFocus: false,
+        // Parking target only while controls are hidden. Never a traversal stop.
+        canRequestFocus: widget.isTv,
+        skipTraversal: true,
         onKeyEvent: _handleRemoteKey,
         child: error != null
             ? _ErrorState(
@@ -477,6 +597,17 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
             : GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: () {
+                  if (widget.isTv) {
+                    if (completionVisible) return;
+                    if (controlsVisible) {
+                      _hideTvControls();
+                    } else {
+                      setState(() => controlsVisible = true);
+                      _requestTvFocus();
+                      _scheduleHide();
+                    }
+                    return;
+                  }
                   setState(() => controlsVisible = !controlsVisible);
                   if (controlsVisible) _scheduleHide();
                 },
@@ -496,12 +627,15 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    VideoDisplaySurface(
-                      key: const Key('video-display-surface'),
-                      mode: session!.preferences.videoDisplayMode,
-                      intrinsicAspectRatio:
-                          engine!.state.value.intrinsicAspectRatio,
-                      child: engine!.buildSurface(),
+                    ExcludeFocus(
+                      excluding: widget.isTv,
+                      child: VideoDisplaySurface(
+                        key: const Key('video-display-surface'),
+                        mode: session!.preferences.videoDisplayMode,
+                        intrinsicAspectRatio:
+                            engine!.state.value.intrinsicAspectRatio,
+                        child: engine!.buildSurface(),
+                      ),
                     ),
                     if (engine!.state.value.isBuffering)
                       const Center(child: CircularProgressIndicator()),
@@ -510,37 +644,80 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
                       duration: const Duration(milliseconds: 180),
                       child: IgnorePointer(
                         ignoring: !controlsVisible,
-                        child: _Controls(
-                          session: session!,
-                          state: engine!.state.value,
-                          capabilities: engine!.capabilities,
-                          hasPrevious: previousEpisode != null,
-                          hasNext: nextEpisode != null,
-                          fullscreen: fullscreen,
-                          onToggleFullscreen: _toggleFullscreen,
-                          onSeek: _seek,
-                          onSources: _showSources,
-                          onEpisodes: _showEpisodes,
-                          onAdjacent: _openAdjacent,
-                          onPreferences: _showPreferences,
-                          onDisplayMode: _showDisplayMode,
-                          onAudio: _showAudio,
-                          onSubtitles: _showSubtitles,
-                          onTogglePlayback: _togglePlayback,
-                          isTv: widget.isTv,
-                          experimentalEngine:
-                              engine!.kind ==
-                              PlaybackEngineKind.betterPlayerExperimental,
+                        child: ExcludeFocus(
+                          excluding:
+                              widget.isTv &&
+                              (!controlsVisible || completionVisible),
+                          child: FocusScope(
+                            node: controlsFocus,
+                            child: FocusTraversalGroup(
+                              policy: widget.isTv
+                                  ? _TvControlsTraversal(
+                                      tvControls,
+                                      hasPrevious: previousEpisode != null,
+                                      hasNext: nextEpisode != null,
+                                      canSeek: engine!.capabilities.canSeek,
+                                      onExitUp: () {
+                                        backFocus.descendants
+                                            .where(
+                                              (node) => node.canRequestFocus,
+                                            )
+                                            .firstOrNull
+                                            ?.requestFocus();
+                                      },
+                                    )
+                                  : null,
+                              child: _Controls(
+                                session: session!,
+                                state: engine!.state.value,
+                                capabilities: engine!.capabilities,
+                                hasPrevious: previousEpisode != null,
+                                hasNext: nextEpisode != null,
+                                fullscreen: fullscreen,
+                                onToggleFullscreen: () async {
+                                  if (widget.isTv) _scheduleHide();
+                                  await _toggleFullscreen();
+                                },
+                                onSeek: _seek,
+                                onSources: _showSources,
+                                onEpisodes: _showEpisodes,
+                                onAdjacent: _openAdjacent,
+                                onPreferences: _showPreferences,
+                                onDisplayMode: _showDisplayMode,
+                                onAudio: _showAudio,
+                                onSubtitles: _showSubtitles,
+                                onTogglePlayback: _togglePlayback,
+                                isTv: widget.isTv,
+                                focusNodes: widget.isTv ? tvControls : const {},
+                                experimentalEngine:
+                                    engine!.kind ==
+                                    PlaybackEngineKind.betterPlayerExperimental,
+                              ),
+                            ),
+                          ),
                         ),
                       ),
                     ),
                     if (completionVisible)
-                      _CompletionOverlay(
-                        hasNext:
-                            nextEpisode?.openableBindings.isNotEmpty == true,
-                        isTv: widget.isTv,
-                        onReplay: _replay,
-                        onNext: () => _openAdjacent(1),
+                      ExcludeFocus(
+                        excluding: widget.isTv && _sheetOpen,
+                        child: FocusScope(
+                          node: completionFocus,
+                          child: _CompletionOverlay(
+                            hasNext:
+                                nextEpisode?.openableBindings.isNotEmpty ==
+                                true,
+                            isTv: widget.isTv,
+                            replayFocus: widget.isTv
+                                ? tvControls[_TvControl.replay]
+                                : null,
+                            nextFocus: widget.isTv
+                                ? tvControls[_TvControl.completionNext]
+                                : null,
+                            onReplay: _replay,
+                            onNext: () => _openAdjacent(1),
+                          ),
+                        ),
                       ),
                   ],
                 ),
@@ -624,6 +801,9 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
       session!.mediaId,
     );
     if (!mounted) return;
+    final firstPlayableIndex = episodes.indexWhere(
+      (episode) => episode.openableBindings.isNotEmpty,
+    );
     final chosen = await _showPlayerSheet<PlaybackEpisodeAvailability>(
       builder: (context) => ListView.builder(
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
@@ -641,6 +821,7 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
             padding: const EdgeInsets.only(bottom: 6),
             child: ListTile(
               selected: value.episode.id == session!.episode.id,
+              autofocus: widget.isTv && index - 1 == firstPlayableIndex,
               enabled: value.openableBindings.isNotEmpty,
               leading: Icon(
                 completed.contains(value.episode.id)
@@ -1038,27 +1219,154 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
     await _play();
     handledNaturalEnd = false;
     if (mounted) setState(() {});
+    _requestTvFocus();
   }
 
   Future<T?> _showPlayerSheet<T>({
     required WidgetBuilder builder,
     bool isScrollControlled = false,
-  }) => showModalBottomSheet<T>(
-    context: context,
-    showDragHandle: true,
-    isScrollControlled: isScrollControlled,
-    backgroundColor: _playerPanelColor,
-    barrierColor: Colors.black54,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
-    ),
-    clipBehavior: Clip.antiAlias,
-    constraints: const BoxConstraints(maxWidth: 720),
-    builder: (context) => _PlayerSheetTheme(child: Builder(builder: builder)),
-  );
+  }) async {
+    if (!mounted ||
+        (widget.isTv &&
+            (_sheetOpen || ModalRoute.of(context)?.isCurrent != true))) {
+      return null;
+    }
+    final returnFocus = tvControls.values
+        .where((node) => node.hasFocus)
+        .firstOrNull;
+    final player = engine;
+    _sheetOpen = true;
+    if (widget.isTv) {
+      _focusGeneration++;
+      hideTimer?.cancel();
+    }
+    try {
+      return await showModalBottomSheet<T>(
+        context: context,
+        showDragHandle: true,
+        isScrollControlled: isScrollControlled,
+        backgroundColor: _playerPanelColor,
+        barrierColor: Colors.black54,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+        ),
+        clipBehavior: Clip.antiAlias,
+        constraints: const BoxConstraints(maxWidth: 720),
+        builder: (context) =>
+            _PlayerSheetTheme(child: Builder(builder: builder)),
+      );
+    } finally {
+      _sheetOpen = false;
+      if (mounted &&
+          widget.isTv &&
+          identical(player, engine) &&
+          ModalRoute.of(context)?.isCurrent == true) {
+        setState(() => controlsVisible = true);
+        _requestTvFocus(returnFocus);
+        _scheduleHide();
+      }
+    }
+  }
 }
 
 const _playerPanelColor = Color(0xFF191E28);
+
+enum _TvControl {
+  episodes,
+  source,
+  audio,
+  subtitles,
+  display,
+  settings,
+  previous,
+  rewind,
+  toggle,
+  forward,
+  next,
+  timeline,
+  fullscreen,
+  replay,
+  completionNext,
+}
+
+/// Explicit TV rows, independent of video size, button size or screen geometry.
+/// The slider keeps its native Left/Right adjustment. Down leaves it for the
+/// fullscreen action; Up returns to playback. Disabled/absent actions are skipped.
+class _TvControlsTraversal extends WidgetOrderTraversalPolicy {
+  _TvControlsTraversal(
+    this.nodes, {
+    required this.onExitUp,
+    required this.hasPrevious,
+    required this.hasNext,
+    required this.canSeek,
+  });
+  final Map<_TvControl, FocusNode> nodes;
+  final VoidCallback onExitUp;
+  final bool hasPrevious;
+  final bool hasNext;
+  final bool canSeek;
+
+  @override
+  bool inDirection(FocusNode currentNode, TraversalDirection direction) {
+    final rows =
+        [
+              [
+                _TvControl.episodes,
+                _TvControl.source,
+                _TvControl.audio,
+                _TvControl.subtitles,
+                _TvControl.display,
+                _TvControl.settings,
+              ],
+              [
+                if (hasPrevious) _TvControl.previous,
+                _TvControl.rewind,
+                _TvControl.toggle,
+                _TvControl.forward,
+                if (hasNext) _TvControl.next,
+              ],
+              if (canSeek) [_TvControl.timeline],
+              [_TvControl.fullscreen],
+            ]
+            .map(
+              (row) => row
+                  .map((id) => nodes[id]!)
+                  .where((node) => node.context != null && node.canRequestFocus)
+                  .toList(),
+            )
+            .where((row) => row.isNotEmpty)
+            .toList();
+    final rowIndex = rows.indexWhere((row) => row.contains(currentNode));
+    if (rowIndex < 0) return super.inDirection(currentNode, direction);
+    final row = rows[rowIndex];
+    FocusNode target = currentNode;
+    if (direction == TraversalDirection.left ||
+        direction == TraversalDirection.right) {
+      if (currentNode == nodes[_TvControl.fullscreen] &&
+          direction == TraversalDirection.left) {
+        target = rows[rowIndex - 1].first;
+      } else {
+        final index =
+            (row.indexOf(currentNode) +
+                    (direction == TraversalDirection.left ? -1 : 1))
+                .clamp(0, row.length - 1);
+        target = row[index];
+      }
+    } else {
+      final nextRow = rowIndex + (direction == TraversalDirection.up ? -1 : 1);
+      if (nextRow < 0) {
+        onExitUp();
+        return true;
+      }
+      if (nextRow >= rows.length) return true;
+      target = rows[nextRow].contains(nodes[_TvControl.toggle])
+          ? nodes[_TvControl.toggle]!
+          : rows[nextRow].first;
+    }
+    target.requestFocus();
+    return true;
+  }
+}
 
 class _PlayerSurface extends StatelessWidget {
   const _PlayerSurface({
@@ -1092,6 +1400,7 @@ class _PlayerControlButton extends StatelessWidget {
     this.iconSize = 24,
     this.primary = false,
     this.autofocus = false,
+    this.focusNode,
   });
 
   final String tooltip;
@@ -1102,6 +1411,7 @@ class _PlayerControlButton extends StatelessWidget {
   final double iconSize;
   final bool primary;
   final bool autofocus;
+  final FocusNode? focusNode;
 
   @override
   Widget build(BuildContext context) {
@@ -1110,6 +1420,7 @@ class _PlayerControlButton extends StatelessWidget {
       tooltip: tooltip,
       onPressed: onPressed,
       autofocus: autofocus,
+      focusNode: focusNode,
       iconSize: iconSize,
       style: ButtonStyle(
         fixedSize: WidgetStatePropertyAll(Size.square(size)),
@@ -1312,6 +1623,7 @@ class _Controls extends StatelessWidget {
     required this.onTogglePlayback,
     required this.isTv,
     required this.experimentalEngine,
+    required this.focusNodes,
   });
   final PlaybackSession session;
   final PlaybackEngineState state;
@@ -1331,6 +1643,7 @@ class _Controls extends StatelessWidget {
   final Future<void> Function() onTogglePlayback;
   final bool isTv;
   final bool experimentalEngine;
+  final Map<_TvControl, FocusNode> focusNodes;
 
   @override
   Widget build(BuildContext context) {
@@ -1386,33 +1699,39 @@ class _Controls extends StatelessWidget {
                 children: [
                   _PlayerControlButton(
                     tooltip: 'Episodes',
+                    focusNode: focusNodes[_TvControl.episodes],
                     onPressed: onEpisodes,
                     icon: Icons.playlist_play_rounded,
                   ),
                   _PlayerControlButton(
                     tooltip: 'Source',
+                    focusNode: focusNodes[_TvControl.source],
                     onPressed: onSources,
                     icon: Icons.source_rounded,
                   ),
                   if (shouldShowAudioControl(capabilities, state))
                     _PlayerControlButton(
                       tooltip: 'Audio',
+                      focusNode: focusNodes[_TvControl.audio],
                       onPressed: onAudio,
                       icon: Icons.audiotrack_rounded,
                     ),
                   if (shouldShowSubtitleControl(capabilities, state))
                     _PlayerControlButton(
                       tooltip: 'Subtitles',
+                      focusNode: focusNodes[_TvControl.subtitles],
                       onPressed: onSubtitles,
                       icon: Icons.subtitles_rounded,
                     ),
                   _PlayerControlButton(
                     tooltip: 'Display mode',
+                    focusNode: focusNodes[_TvControl.display],
                     onPressed: onDisplayMode,
                     icon: Icons.aspect_ratio_rounded,
                   ),
                   _PlayerControlButton(
                     tooltip: 'Settings',
+                    focusNode: focusNodes[_TvControl.settings],
                     onPressed: onPreferences,
                     icon: Icons.tune_rounded,
                   ),
@@ -1449,18 +1768,21 @@ class _Controls extends StatelessWidget {
                       children: [
                         _PlayerControlButton(
                           tooltip: 'Previous episode',
+                          focusNode: focusNodes[_TvControl.previous],
                           onPressed: hasPrevious ? () => onAdjacent(-1) : null,
                           icon: Icons.skip_previous_rounded,
                           iconSize: 28,
                         ),
                         _PlayerControlButton(
                           tooltip: 'Back $step seconds',
+                          focusNode: focusNodes[_TvControl.rewind],
                           onPressed: () => onSeek(Duration(seconds: -step)),
                           size: isTv && !compact ? 64 : 52,
                           child: _SeekGlyph(forward: false, step: step),
                         ),
                         _PlayerControlButton(
                           autofocus: isTv,
+                          focusNode: focusNodes[_TvControl.toggle],
                           tooltip: state.isPlaying ? 'Pause' : 'Play',
                           onPressed: onTogglePlayback,
                           primary: true,
@@ -1472,12 +1794,14 @@ class _Controls extends StatelessWidget {
                         ),
                         _PlayerControlButton(
                           tooltip: 'Forward $step seconds',
+                          focusNode: focusNodes[_TvControl.forward],
                           onPressed: () => onSeek(Duration(seconds: step)),
                           size: isTv && !compact ? 64 : 52,
                           child: _SeekGlyph(forward: true, step: step),
                         ),
                         _PlayerControlButton(
                           tooltip: 'Next episode',
+                          focusNode: focusNodes[_TvControl.next],
                           onPressed: hasNext ? () => onAdjacent(1) : null,
                           icon: Icons.skip_next_rounded,
                           iconSize: 28,
@@ -1508,25 +1832,35 @@ class _Controls extends StatelessWidget {
                                     overlayRadius: 16,
                                   ),
                                 ),
-                                child: Slider(
-                                  value: state.duration.inMilliseconds == 0
-                                      ? 0
-                                      : (state.position.inMilliseconds /
-                                                state.duration.inMilliseconds)
-                                            .clamp(0, 1),
-                                  onChanged: capabilities.canSeek
-                                      ? (value) => onSeek(
-                                          Duration(
-                                                milliseconds:
-                                                    (state
-                                                                .duration
-                                                                .inMilliseconds *
-                                                            value)
-                                                        .round(),
-                                              ) -
-                                              state.position,
-                                        )
-                                      : null,
+                                child: MediaQuery(
+                                  data: MediaQuery.of(context).copyWith(
+                                    // Native slider key handling otherwise consumes
+                                    // Up/Down as seeking and traps remote traversal.
+                                    navigationMode: isTv
+                                        ? NavigationMode.directional
+                                        : MediaQuery.navigationModeOf(context),
+                                  ),
+                                  child: Slider(
+                                    focusNode: focusNodes[_TvControl.timeline],
+                                    value: state.duration.inMilliseconds == 0
+                                        ? 0
+                                        : (state.position.inMilliseconds /
+                                                  state.duration.inMilliseconds)
+                                              .clamp(0, 1),
+                                    onChanged: capabilities.canSeek
+                                        ? (value) => onSeek(
+                                            Duration(
+                                                  milliseconds:
+                                                      (state
+                                                                  .duration
+                                                                  .inMilliseconds *
+                                                              value)
+                                                          .round(),
+                                                ) -
+                                                state.position,
+                                          )
+                                        : null,
+                                  ),
                                 ),
                               ),
                               Padding(
@@ -1563,6 +1897,7 @@ class _Controls extends StatelessWidget {
                         ),
                         const SizedBox(width: 8),
                         _PlayerControlButton(
+                          focusNode: focusNodes[_TvControl.fullscreen],
                           tooltip: fullscreen
                               ? 'Exit fullscreen'
                               : 'Fullscreen',
@@ -1626,12 +1961,16 @@ class _CompletionOverlay extends StatelessWidget {
     required this.isTv,
     required this.onReplay,
     required this.onNext,
+    this.replayFocus,
+    this.nextFocus,
   });
 
   final bool hasNext;
   final bool isTv;
   final Future<void> Function() onReplay;
   final Future<void> Function() onNext;
+  final FocusNode? replayFocus;
+  final FocusNode? nextFocus;
 
   @override
   Widget build(BuildContext context) {
@@ -1709,6 +2048,8 @@ class _CompletionOverlay extends StatelessWidget {
                       runSpacing: 12,
                       children: [
                         OutlinedButton.icon(
+                          focusNode: replayFocus,
+                          autofocus: isTv && !hasNext,
                           style: actionStyle(primary: false),
                           onPressed: onReplay,
                           icon: const Icon(Icons.replay_rounded),
@@ -1716,6 +2057,7 @@ class _CompletionOverlay extends StatelessWidget {
                         ),
                         if (hasNext)
                           FilledButton.icon(
+                            focusNode: nextFocus,
                             style: actionStyle(primary: true),
                             autofocus: isTv,
                             onPressed: onNext,
