@@ -1048,36 +1048,22 @@ Future<void> _openResult(
   ProductController controller,
   ProductSearchResult result,
 ) async {
-  showDialog<void>(
-    context: context,
-    barrierDismissible: false,
-    builder: (_) => const Center(child: CircularProgressIndicator()),
+  if (ModalRoute.of(context)?.isCurrent != true) return;
+  await Navigator.of(context).push(
+    MaterialPageRoute<void>(
+      settings: RouteSettings(
+        name: result.canonicalId == null
+            ? '/media/source-details'
+            : '/media/${result.canonicalId!.value}',
+      ),
+      builder: (_) => MediaDetailsScreen(
+        controller: controller,
+        mediaId: result.canonicalId,
+        searchResult: result,
+      ),
+    ),
   );
-  try {
-    final details = await controller.openResult(result);
-    if (!context.mounted) return;
-    Navigator.of(context).pop();
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        settings: RouteSettings(
-          name: '/media/${details.summary.media.id.value}',
-        ),
-        builder: (_) => MediaDetailsScreen(
-          controller: controller,
-          mediaId: details.summary.media.id,
-          initialDetails: details,
-        ),
-      ),
-    );
-  } on Object {
-    if (!context.mounted) return;
-    Navigator.of(context).pop();
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('This title could not be opened. Try again later.'),
-      ),
-    );
-  }
+  if (context.mounted) await controller.refreshLocal();
 }
 
 Future<void> _openDetails(
@@ -1085,6 +1071,7 @@ Future<void> _openDetails(
   ProductController controller,
   CanonicalMediaId mediaId,
 ) async {
+  if (ModalRoute.of(context)?.isCurrent != true) return;
   await Navigator.of(context).push(
     MaterialPageRoute<void>(
       settings: RouteSettings(name: '/media/${mediaId.value}'),

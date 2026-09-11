@@ -252,20 +252,16 @@ class ProductController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<ProductMediaDetails> openResult(ProductSearchResult result) async {
-    final details = await repository.openSearchResult(result);
-    await refreshLocal();
-    return details;
-  }
+  // Opening one title must not wait for every Library/Continue item to reload.
+  // The product shell refreshes its local summary after the Details route exits.
+  Future<ProductMediaDetails> openResult(ProductSearchResult result) =>
+      repository.openSearchResult(result);
 
   Future<ProductMediaDetails?> details(CanonicalMediaId id) =>
       repository.details(id);
 
-  Future<ProductMediaDetails> refreshDetails(CanonicalMediaId id) async {
-    final value = await repository.refreshDetails(id);
-    await refreshLocal();
-    return value;
-  }
+  Future<ProductMediaDetails> refreshDetails(CanonicalMediaId id) =>
+      repository.refreshDetails(id);
 
   Future<ProductMediaDetails> updateLibrary(
     ProductMediaDetails details, {

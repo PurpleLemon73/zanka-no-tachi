@@ -669,6 +669,7 @@ Future<void> _openDetails(
   CanonicalMediaId id, {
   bool autofocusResume = false,
 }) async {
+  if (ModalRoute.of(context)?.isCurrent != true) return;
   await Navigator.of(context).push(
     MaterialPageRoute<void>(
       settings: RouteSettings(name: '/tv/media/${id.value}'),
@@ -687,18 +688,20 @@ Future<void> _openResult(
   ProductController controller,
   ProductSearchResult result,
 ) async {
-  final details = await controller.openResult(result);
-  if (!context.mounted) return;
+  if (ModalRoute.of(context)?.isCurrent != true) return;
   await Navigator.of(context).push(
     MaterialPageRoute<void>(
       settings: RouteSettings(
-        name: '/tv/media/${details.summary.media.id.value}',
+        name: result.canonicalId == null
+            ? '/tv/media/source-details'
+            : '/tv/media/${result.canonicalId!.value}',
       ),
       builder: (_) => TvMediaDetailsScreen(
         controller: controller,
-        mediaId: details.summary.media.id,
-        initialDetails: details,
+        mediaId: result.canonicalId,
+        searchResult: result,
       ),
     ),
   );
+  if (context.mounted) await controller.refreshLocal();
 }

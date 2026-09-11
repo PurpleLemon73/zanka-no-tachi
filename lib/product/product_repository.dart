@@ -395,7 +395,10 @@ class ProductRepository {
       live.providers.where((value) => value.id == id).firstOrNull?.enabled ??
       true;
 
-  String _friendlyError(Object error) => switch (error) {
+  String _friendlyError(Object error) => describeFailure(error);
+
+  /// Product-safe messages only; never expose provider locators or causes.
+  static String describeFailure(Object error) => switch (error) {
     AdapterParseError() => 'This source changed and needs an update.',
     AdapterNetworkError() => 'This source is currently unreachable.',
     AdapterHttpError() => 'This source returned an unexpected response.',

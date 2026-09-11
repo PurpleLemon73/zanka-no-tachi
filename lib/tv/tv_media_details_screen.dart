@@ -8,6 +8,7 @@ import '../player/playback_repository.dart';
 import '../player/ui/anime_player_screen.dart';
 import '../product/product_controller.dart';
 import '../product/product_models.dart';
+import '../product/product_repository.dart';
 import '../product/smart_resume.dart';
 import '../product/ui/design_system.dart';
 import '../reader/reader_domain.dart';
@@ -21,12 +22,14 @@ class TvMediaDetailsScreen extends StatefulWidget {
     required this.controller,
     required this.mediaId,
     this.initialDetails,
+    this.searchResult,
     this.autofocusResume = true,
-  });
+  }) : assert(mediaId != null || searchResult != null);
 
   final ProductController controller;
-  final CanonicalMediaId mediaId;
+  final CanonicalMediaId? mediaId;
   final ProductMediaDetails? initialDetails;
+  final ProductSearchResult? searchResult;
   final bool autofocusResume;
 
   @override
@@ -36,6 +39,9 @@ class TvMediaDetailsScreen extends StatefulWidget {
 class _TvMediaDetailsScreenState extends State<TvMediaDetailsScreen> {
   ProductMediaDetails? details;
   Object? error;
+  bool loading = false;
+  int _loadGeneration = 0;
+  Future<void>? _pendingLoad;
 
   @override
   void initState() {
@@ -44,12 +50,51 @@ class _TvMediaDetailsScreenState extends State<TvMediaDetailsScreen> {
     if (details == null) _load();
   }
 
-  Future<void> _load() async {
+  @override
+  void didUpdateWidget(covariant TvMediaDetailsScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.mediaId != widget.mediaId ||
+        oldWidget.searchResult != widget.searchResult ||
+        oldWidget.controller != widget.controller) {
+      _loadGeneration++;
+      _pendingLoad = null;
+      details = widget.initialDetails;
+      error = null;
+      loading = false;
+      if (details == null) _load();
+    }
+  }
+
+  @override
+  void dispose() {
+    _loadGeneration++;
+    super.dispose();
+  }
+
+  Future<void> _load() {
+    if (_pendingLoad case final pending?) return pending;
+    final ticket = ++_loadGeneration;
+    setState(() {
+      loading = true;
+      error = null;
+    });
+    return _pendingLoad = _performLoad(ticket);
+  }
+
+  Future<void> _performLoad(int ticket) async {
     try {
-      final value = await widget.controller.details(widget.mediaId);
-      if (mounted) setState(() => details = value);
+      final id = details?.summary.media.id ?? widget.mediaId;
+      final value = id != null
+          ? await widget.controller.details(id)
+          : await widget.controller.openResult(widget.searchResult!);
+      if (mounted && ticket == _loadGeneration) setState(() => details = value);
     } on Object catch (value) {
-      if (mounted) setState(() => error = value);
+      if (mounted && ticket == _loadGeneration) setState(() => error = value);
+    } finally {
+      if (mounted && ticket == _loadGeneration) {
+        _pendingLoad = null;
+        setState(() => loading = false);
+      }
     }
   }
 
@@ -59,12 +104,15 @@ class _TvMediaDetailsScreenState extends State<TvMediaDetailsScreen> {
     return Scaffold(
       key: const Key('tv-media-details'),
       body: SafeArea(
-        child: error != null
+        child: error != null || (!loading && value == null)
             ? ProductEmptyState(
                 icon: Icons.error_outline,
                 title: 'Details unavailable',
-                message: 'Your saved state is unchanged.',
+                message: error == null
+                    ? 'This item is no longer available on this device.'
+                    : ProductRepository.describeFailure(error!),
                 action: FilledButton(
+                  autofocus: true,
                   onPressed: _load,
                   child: const Text('Retry'),
                 ),

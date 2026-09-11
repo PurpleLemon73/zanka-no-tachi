@@ -7,6 +7,7 @@ import '../../canonical/domain/user_state.dart';
 import '../../canonical/reconciliation/source_availability.dart';
 import '../product_controller.dart';
 import '../product_models.dart';
+import '../product_repository.dart';
 import 'design_system.dart';
 import '../../reader/reader_domain.dart';
 import '../../reader/reader_repository.dart';
@@ -25,10 +26,12 @@ class MediaDetailsScreen extends StatefulWidget {
     required this.controller,
     required this.mediaId,
     this.initialDetails,
-  });
+    this.searchResult,
+  }) : assert(mediaId != null || searchResult != null);
   final ProductController controller;
-  final CanonicalMediaId mediaId;
+  final CanonicalMediaId? mediaId;
   final ProductMediaDetails? initialDetails;
+  final ProductSearchResult? searchResult;
 
   @override
   State<MediaDetailsScreen> createState() => _MediaDetailsScreenState();
@@ -38,6 +41,9 @@ class _MediaDetailsScreenState extends State<MediaDetailsScreen> {
   ProductMediaDetails? details;
   Object? error;
   bool refreshing = false;
+  bool loading = false;
+  int _loadGeneration = 0;
+  Future<void>? _pendingLoad;
 
   @override
   void initState() {
@@ -46,27 +52,70 @@ class _MediaDetailsScreenState extends State<MediaDetailsScreen> {
     if (details == null) _load();
   }
 
-  Future<void> _load() async {
+  @override
+  void didUpdateWidget(covariant MediaDetailsScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.mediaId != widget.mediaId ||
+        oldWidget.searchResult != widget.searchResult ||
+        oldWidget.controller != widget.controller) {
+      _loadGeneration++;
+      _pendingLoad = null;
+      details = widget.initialDetails;
+      error = null;
+      loading = false;
+      refreshing = false;
+      if (details == null) _load();
+    }
+  }
+
+  @override
+  void dispose() {
+    _loadGeneration++;
+    super.dispose();
+  }
+
+  Future<void> _load() {
+    if (_pendingLoad case final pending?) return pending;
+    final ticket = ++_loadGeneration;
+    setState(() {
+      loading = true;
+      error = null;
+      refreshing = false;
+    });
+    return _pendingLoad = _performLoad(ticket);
+  }
+
+  Future<void> _performLoad(int ticket) async {
     try {
-      final value = await widget.controller.details(widget.mediaId);
-      if (mounted) setState(() => details = value);
+      final id = details?.summary.media.id ?? widget.mediaId;
+      final value = id != null
+          ? await widget.controller.details(id)
+          : await widget.controller.openResult(widget.searchResult!);
+      if (mounted && ticket == _loadGeneration) setState(() => details = value);
     } on Object catch (value) {
-      if (mounted) setState(() => error = value);
+      if (mounted && ticket == _loadGeneration) setState(() => error = value);
+    } finally {
+      if (mounted && ticket == _loadGeneration) {
+        _pendingLoad = null;
+        setState(() => loading = false);
+      }
     }
   }
 
   Future<void> _refreshSources() async {
-    if (refreshing) return;
+    final id = details?.summary.media.id;
+    if (refreshing || loading || id == null) return;
+    final ticket = ++_loadGeneration;
     setState(() => refreshing = true);
     try {
-      final value = await widget.controller.refreshDetails(widget.mediaId);
-      if (!mounted) return;
+      final value = await widget.controller.refreshDetails(id);
+      if (!mounted || ticket != _loadGeneration) return;
       setState(() => details = value);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Source details refreshed.')),
       );
     } on Object {
-      if (!mounted) return;
+      if (!mounted || ticket != _loadGeneration) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
@@ -75,7 +124,9 @@ class _MediaDetailsScreenState extends State<MediaDetailsScreen> {
         ),
       );
     } finally {
-      if (mounted) setState(() => refreshing = false);
+      if (mounted && ticket == _loadGeneration) {
+        setState(() => refreshing = false);
+      }
     }
   }
 
@@ -410,12 +461,13 @@ class _MediaDetailsScreenState extends State<MediaDetailsScreen> {
             ),
         ],
       ),
-      body: error != null
+      body: error != null || (!loading && value == null)
           ? ProductEmptyState(
               icon: Icons.error_outline,
               title: 'Details unavailable',
-              message:
-                  'The saved item is still safe. Try loading its local details again.',
+              message: error == null
+                  ? 'This item is no longer available on this device.'
+                  : ProductRepository.describeFailure(error!),
               action: FilledButton(
                 onPressed: _load,
                 child: const Text('Retry'),
