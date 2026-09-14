@@ -11,6 +11,8 @@ import '../product/product_models.dart';
 import '../product/product_repository.dart';
 import '../product/smart_resume.dart';
 import '../product/ui/design_system.dart';
+import '../product/ui/details_actions.dart';
+import '../product/ui/details_dialogs.dart';
 import '../reader/reader_domain.dart';
 import '../reader/reader_repository.dart';
 import '../reader/ui/manga_reader_screen.dart';
@@ -127,6 +129,18 @@ class _TvMediaDetailsScreenState extends State<TvMediaDetailsScreen> {
                       pinned: true,
                       title: const Text('Details'),
                       surfaceTintColor: Colors.transparent,
+                      actions: [
+                        DetailsActions(
+                          key: ValueKey(value.summary.media.id),
+                          controller: widget.controller,
+                          details: value,
+                          tv: true,
+                          enabled: !loading,
+                          onChanged: (updated) {
+                            if (mounted) setState(() => details = updated);
+                          },
+                        ),
+                      ],
                     ),
                     SliverPadding(
                       padding: const EdgeInsets.fromLTRB(
@@ -215,34 +229,35 @@ class _TvMediaDetailsScreenState extends State<TvMediaDetailsScreen> {
     if (episode.openableBindings.length == 1) {
       binding = episode.openableBindings.single;
     } else {
+      final firstChoice = episode.openableBindings.firstWhere(
+        (item) => item.providerId == value.preferredProvider,
+        orElse: () => episode.openableBindings.first,
+      );
       binding = await showDialog<EpisodeSourceBinding>(
         context: context,
         barrierDismissible: false,
-        builder: (dialogContext) => AlertDialog(
-          title: const Text('Choose source'),
-          content: SizedBox(
-            width: 520,
-            child: ListView(
-              shrinkWrap: true,
-              children: episode.openableBindings
-                  .map(
-                    (item) => ListTile(
-                      autofocus: item.providerId == value.preferredProvider,
-                      title: Text(item.providerId.value),
-                      subtitle: const Text(
-                        'Exact timestamps remain separate for each encode.',
-                      ),
-                      onTap: () => Navigator.pop(dialogContext, item),
-                    ),
-                  )
-                  .toList(),
-            ),
-          ),
+        builder: (dialogContext) => DetailsDialog(
+          tv: true,
+          title: 'Choose source',
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
               child: const Text('Cancel'),
             ),
+          ],
+          children: [
+            const Text(
+              'Your saved playback position stays separate for each source.',
+            ),
+            for (final item in episode.openableBindings)
+              OutlinedButton(
+                autofocus: item == firstChoice,
+                onPressed: () => Navigator.pop(dialogContext, item),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: Text(item.providerId.value),
+                ),
+              ),
           ],
         ),
       );
@@ -456,6 +471,29 @@ class _TvDetailsHero extends StatelessWidget {
   }
 }
 
+// Horizontal rails need a cross-axis extent. Derive it from scaled text
+// metrics rather than clipping accessible labels to a fixed 126-pixel card.
+double _installmentRailHeight(BuildContext context, {required bool chapter}) {
+  final theme = Theme.of(context).textTheme;
+  double height(TextStyle? style, int lines) {
+    final painter = TextPainter(
+      text: TextSpan(text: List.filled(lines, 'Ag').join('\n'), style: style),
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+    )..layout();
+    final result = painter.height;
+    painter.dispose();
+    return result;
+  }
+
+  // Card padding, focus border, title/status gap, and bounded secondary text.
+  return 32 +
+      2 * TvTokens.focusBorder +
+      8 +
+      height(chapter ? theme.bodyMedium : theme.titleMedium, chapter ? 2 : 1) +
+      height(theme.bodyMedium, 3);
+}
+
 class _TvEpisodes extends StatelessWidget {
   const _TvEpisodes({required this.details, required this.onOpen});
   final ProductMediaDetails details;
@@ -467,7 +505,7 @@ class _TvEpisodes extends StatelessWidget {
     children: [
       const TvSectionTitle('Episodes'),
       SizedBox(
-        height: 126,
+        height: _installmentRailHeight(context, chapter: false),
         child: ListView.separated(
           key: const Key('tv-episode-rail'),
           scrollDirection: Axis.horizontal,
@@ -512,6 +550,8 @@ class _TvEpisodes extends StatelessWidget {
                             : item.openableBindings.isEmpty
                             ? 'Unavailable'
                             : '${item.openableBindings.length} source(s)',
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ],
                   ),
@@ -537,7 +577,7 @@ class _TvChapters extends StatelessWidget {
     children: [
       const TvSectionTitle('Chapters'),
       SizedBox(
-        height: 126,
+        height: _installmentRailHeight(context, chapter: true),
         child: ListView.separated(
           key: const Key('tv-chapter-rail'),
           scrollDirection: Axis.horizontal,
@@ -550,7 +590,8 @@ class _TvChapters extends StatelessWidget {
                 onPressed: item.openableBindings.isEmpty
                     ? null
                     : () => onOpen(details, item),
-                semanticLabel: item.chapter.number.rawLabel,
+                semanticLabel:
+                    '${item.chapter.number.rawLabel}, ${item.openableBindings.isEmpty ? 'unavailable' : '${item.openableBindings.length} readable source(s)'}',
                 child: Padding(
                   padding: const EdgeInsets.all(16),
                   child: Column(
@@ -567,6 +608,8 @@ class _TvChapters extends StatelessWidget {
                         item.openableBindings.isEmpty
                             ? 'Unavailable'
                             : '${item.openableBindings.length} readable source(s)',
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ],
                   ),

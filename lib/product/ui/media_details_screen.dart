@@ -17,7 +17,8 @@ import '../../player/playback_repository.dart';
 import '../../player/ui/anime_player_screen.dart';
 import '../../product_maturity/maturity_domain.dart';
 import '../../local_library/local_asset.dart';
-import '../../adapter_platform/adapter_sdk.dart';
+import 'details_actions.dart';
+import 'details_dialogs.dart';
 import '../smart_resume.dart';
 
 class MediaDetailsScreen extends StatefulWidget {
@@ -156,198 +157,6 @@ class _MediaDetailsScreenState extends State<MediaDetailsScreen> {
     if (mounted) setState(() => details = updated);
   }
 
-  Future<void> _editMetadata() async {
-    final current = details;
-    if (current == null) return;
-    final media = current.summary.media;
-    final title = TextEditingController(text: media.title.value);
-    final alternates = TextEditingController(
-      text: media.alternateTitles.map((value) => value.value).join(', '),
-    );
-    final genres = TextEditingController(
-      text: media.genres.map((value) => value.value).join(', '),
-    );
-    final description = TextEditingController(
-      text: media.description?.value ?? '',
-    );
-    final creator = TextEditingController(
-      text: current.metadataOverride?.creatorOrStudio ?? '',
-    );
-    final cover = TextEditingController(text: media.coverLocator ?? '');
-    var status = media.status;
-    var format = media is CanonicalAnime ? media.format : AnimeFormat.unknown;
-    final accepted = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => StatefulBuilder(
-        builder: (context, update) => AlertDialog(
-          title: const Text('Edit media'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: title,
-                  decoration: const InputDecoration(labelText: 'Display title'),
-                ),
-                TextField(
-                  controller: alternates,
-                  decoration: const InputDecoration(
-                    labelText: 'Alternate titles (comma separated)',
-                  ),
-                ),
-                TextField(
-                  controller: description,
-                  maxLines: 4,
-                  decoration: const InputDecoration(labelText: 'Description'),
-                ),
-                TextField(
-                  controller: genres,
-                  decoration: const InputDecoration(
-                    labelText: 'Genres/tags (comma separated)',
-                  ),
-                ),
-                TextField(
-                  controller: cover,
-                  decoration: const InputDecoration(
-                    labelText: 'Cover URL or local path',
-                  ),
-                ),
-                DropdownButtonFormField<CanonicalMediaStatus>(
-                  initialValue: status,
-                  decoration: const InputDecoration(labelText: 'Status'),
-                  items: CanonicalMediaStatus.values
-                      .map(
-                        (value) => DropdownMenuItem(
-                          value: value,
-                          child: Text(value.name),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (value) {
-                    if (value != null) update(() => status = value);
-                  },
-                ),
-                if (media is CanonicalAnime)
-                  DropdownButtonFormField<AnimeFormat>(
-                    initialValue: format,
-                    decoration: const InputDecoration(labelText: 'Format'),
-                    items: AnimeFormat.values
-                        .map(
-                          (value) => DropdownMenuItem(
-                            value: value,
-                            child: Text(value.name.toUpperCase()),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (value) {
-                      if (value != null) update(() => format = value);
-                    },
-                  ),
-                TextField(
-                  controller: creator,
-                  decoration: InputDecoration(
-                    labelText: media is CanonicalAnime
-                        ? 'Studio (optional)'
-                        : 'Creator (optional)',
-                  ),
-                ),
-                const SizedBox(height: 12),
-                const Text(
-                  'These user-owned values take priority over provider refresh and enrichment.',
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(context, null),
-              child: const Text('Clear all edits'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Save'),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (accepted == null && mounted) {
-      final confirmed = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Clear all metadata edits?'),
-          content: const Text(
-            'Provider or enrichment values will show again. Your Library and progress are unchanged.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Clear edits'),
-            ),
-          ],
-        ),
-      );
-      if (confirmed == true) {
-        final updated = await widget.controller.clearMetadataOverrides(current);
-        if (mounted) setState(() => details = updated);
-      }
-    }
-    if (accepted == true) {
-      List<String> split(String value) => value
-          .split(',')
-          .map((part) => part.trim())
-          .where((part) => part.isNotEmpty)
-          .toList();
-      final updated = await widget.controller.saveMetadataOverride(
-        current,
-        displayTitle: title.text,
-        alternateTitles: split(alternates.text),
-        genres: split(genres.text),
-        coverLocator: cover.text.trim().isEmpty ? null : cover.text.trim(),
-        description: description.text.trim().isEmpty
-            ? null
-            : description.text.trim(),
-        status: status,
-        animeFormat: media is CanonicalAnime ? format : null,
-        creatorOrStudio: creator.text.trim().isEmpty
-            ? null
-            : creator.text.trim(),
-      );
-      if (mounted) setState(() => details = updated);
-    }
-    title.dispose();
-    alternates.dispose();
-    genres.dispose();
-    description.dispose();
-    creator.dispose();
-    cover.dispose();
-  }
-
-  Future<void> _enrich() async {
-    final current = details;
-    if (current == null) return;
-    final updated = await widget.controller.enrichReviewed(current);
-    if (mounted) {
-      setState(() => details = updated);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Reviewed deterministic enrichment attached with provenance.',
-          ),
-        ),
-      );
-    }
-  }
-
   Future<void> _repairAsset(LocalAsset asset) async {
     final local = widget.controller.localLibrary;
     if (local == null) return;
@@ -362,19 +171,22 @@ class _MediaDetailsScreenState extends State<MediaDetailsScreen> {
     if (path == null || !mounted) return;
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Repair local source?'),
-        content: const Text(
-          'The same media, installment, progress, and resume are retained. Only the missing file is replaced.',
-        ),
+      builder: (context) => DetailsDialog(
+        title: 'Repair local source?',
         actions: [
           TextButton(
+            autofocus: true,
             onPressed: () => Navigator.pop(context, false),
             child: const Text('Cancel'),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
             child: const Text('Repair'),
+          ),
+        ],
+        children: const [
+          Text(
+            'The same media, installment, progress, and resume are retained. Only the missing file is replaced.',
           ),
         ],
       ),
@@ -398,66 +210,16 @@ class _MediaDetailsScreenState extends State<MediaDetailsScreen> {
         surfaceTintColor: Colors.transparent,
         actions: [
           if (value != null)
-            IconButton(
-              key: const Key('refresh-source-details'),
-              tooltip: 'Refresh source details',
-              onPressed: refreshing ? null : _refreshSources,
-              icon: refreshing
-                  ? const SizedBox.square(
-                      dimension: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.refresh),
-            ),
-          if (value != null)
-            IconButton(
-              key: const Key('edit-metadata'),
-              tooltip: 'Edit display metadata',
-              onPressed: _editMetadata,
-              icon: const Icon(Icons.edit_outlined),
-            ),
-          if (value != null)
-            PopupMenuButton<MetadataOverrideField>(
-              tooltip: 'Reset one metadata edit',
-              icon: const Icon(Icons.undo),
-              onSelected: (field) async {
-                final updated = await widget.controller
-                    .clearMetadataOverrideField(value, field);
+            DetailsActions(
+              key: ValueKey(value.summary.media.id),
+              controller: widget.controller,
+              details: value,
+              enabled: !loading && !refreshing,
+              refreshing: refreshing,
+              onRefresh: _refreshSources,
+              onChanged: (updated) {
                 if (mounted) setState(() => details = updated);
               },
-              itemBuilder: (_) => const [
-                PopupMenuItem(
-                  value: MetadataOverrideField.displayTitle,
-                  child: Text('Reset title'),
-                ),
-                PopupMenuItem(
-                  value: MetadataOverrideField.description,
-                  child: Text('Reset description'),
-                ),
-                PopupMenuItem(
-                  value: MetadataOverrideField.cover,
-                  child: Text('Reset cover'),
-                ),
-                PopupMenuItem(
-                  value: MetadataOverrideField.genres,
-                  child: Text('Reset genres/tags'),
-                ),
-                PopupMenuItem(
-                  value: MetadataOverrideField.status,
-                  child: Text('Reset status'),
-                ),
-                PopupMenuItem(
-                  value: MetadataOverrideField.format,
-                  child: Text('Reset format'),
-                ),
-              ],
-            ),
-          if (value != null)
-            IconButton(
-              key: const Key('enrich-metadata'),
-              tooltip: 'Attach reviewed enrichment',
-              onPressed: _enrich,
-              icon: const Icon(Icons.auto_awesome_outlined),
             ),
         ],
       ),
@@ -1361,41 +1123,44 @@ Future<void> _placeholder(
   required ProviderId? preferred,
 }) => showModalBottomSheet<void>(
   context: context,
+  useSafeArea: true,
   showDragHandle: true,
-  builder: (context) => Padding(
-    padding: const EdgeInsets.all(ZankaSpace.lg),
-    child: SingleChildScrollView(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title, style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: ZankaSpace.sm),
-          const Text('This installment can’t be opened right now.'),
-          const SizedBox(height: ZankaSpace.sm),
-          Text(warning),
-          const SizedBox(height: ZankaSpace.md),
-          Wrap(
-            spacing: ZankaSpace.sm,
-            children: providers
-                .map(
-                  (provider) => SourceBadge(
-                    _providerName(provider),
-                    selected: provider == preferred,
-                  ),
-                )
-                .toList(),
-          ),
-          const SizedBox(height: ZankaSpace.md),
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton(
-              key: const Key('close-placeholder'),
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Close'),
+  builder: (context) => SafeArea(
+    child: Padding(
+      padding: const EdgeInsets.all(ZankaSpace.lg),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: ZankaSpace.sm),
+            const Text('This installment can’t be opened right now.'),
+            const SizedBox(height: ZankaSpace.sm),
+            Text(warning),
+            const SizedBox(height: ZankaSpace.md),
+            Wrap(
+              spacing: ZankaSpace.sm,
+              children: providers
+                  .map(
+                    (provider) => SourceBadge(
+                      _providerName(provider),
+                      selected: provider == preferred,
+                    ),
+                  )
+                  .toList(),
             ),
-          ),
-        ],
+            const SizedBox(height: ZankaSpace.md),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                key: const Key('close-placeholder'),
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Close'),
+              ),
+            ),
+          ],
+        ),
       ),
     ),
   ),
@@ -1408,100 +1173,53 @@ Future<void> _editChapterDialog(
   String fallback,
   Future<void> Function(ChapterUserEdit) save,
 ) async {
-  final label = TextEditingController(text: current?.rawLabel ?? fallback);
-  final volume = TextEditingController(text: current?.volumeLabel ?? '');
-  final order = TextEditingController(
-    text: current?.explicitOrder?.toString() ?? '',
-  );
-  final sourceLabel = TextEditingController(
-    text: current?.sourceDisplayLabel ?? '',
-  );
-  var kind = current?.kind ?? MangaInstallmentKind.standard;
-  final accepted = await showDialog<bool>(
+  final result = await showDialog<InstallmentEditResult>(
     context: context,
-    builder: (context) => StatefulBuilder(
-      builder: (context, update) => AlertDialog(
-        title: const Text('Edit chapter'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: label,
-                decoration: const InputDecoration(labelText: 'Chapter label'),
-              ),
-              DropdownButtonFormField<MangaInstallmentKind>(
-                initialValue: kind,
-                decoration: const InputDecoration(labelText: 'Type'),
-                items: MangaInstallmentKind.values
-                    .map(
-                      (value) => DropdownMenuItem(
-                        value: value,
-                        child: Text(value.name),
-                      ),
-                    )
-                    .toList(),
-                onChanged: (value) => update(() => kind = value!),
-              ),
-              TextField(
-                controller: volume,
-                decoration: const InputDecoration(
-                  labelText: 'Volume (optional)',
-                ),
-              ),
-              TextField(
-                controller: order,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'Order (optional)',
-                ),
-              ),
-              TextField(
-                controller: sourceLabel,
-                decoration: const InputDecoration(
-                  labelText: 'Local source label (optional)',
-                ),
-              ),
-              const Text(
-                'This changes your display metadata, not the original source fact.',
-              ),
-            ],
-          ),
+    builder: (_) => InstallmentEditDialog(
+      title: 'Edit chapter',
+      kind: (current?.kind ?? MangaInstallmentKind.standard).name,
+      kinds: MangaInstallmentKind.values.map((v) => v.name).toList(),
+      fields: {
+        'label': (
+          label: 'Chapter label',
+          value: current?.rawLabel ?? fallback,
+          numeric: false,
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: label.text.trim().isEmpty
-                ? null
-                : () => Navigator.pop(context, true),
-            child: const Text('Save'),
-          ),
-        ],
-      ),
+        'volume': (
+          label: 'Volume (optional)',
+          value: current?.volumeLabel ?? '',
+          numeric: false,
+        ),
+        'order': (
+          label: 'Order (optional)',
+          value: current?.explicitOrder?.toString() ?? '',
+          numeric: true,
+        ),
+        'source': (
+          label: 'Local source label (optional)',
+          value: current?.sourceDisplayLabel ?? '',
+          numeric: false,
+        ),
+      },
     ),
   );
-  if (accepted == true) {
-    await save(
-      ChapterUserEdit(
-        chapterId: id,
-        rawLabel: label.text.trim(),
-        kind: kind,
-        volumeLabel: volume.text.trim().isEmpty ? null : volume.text.trim(),
-        explicitOrder: double.tryParse(order.text.trim()),
-        sourceDisplayLabel: sourceLabel.text.trim().isEmpty
-            ? null
-            : sourceLabel.text.trim(),
-        updatedAt: DateTime.now().toUtc(),
-      ),
-    );
-  }
-  label.dispose();
-  volume.dispose();
-  order.dispose();
-  sourceLabel.dispose();
+  if (result == null || !context.mounted) return;
+  final values = result.values;
+  await save(
+    ChapterUserEdit(
+      chapterId: id,
+      rawLabel: values['label']!.trim(),
+      kind: MangaInstallmentKind.values.byName(result.kind),
+      volumeLabel: values['volume']!.trim().isEmpty
+          ? null
+          : values['volume']!.trim(),
+      explicitOrder: double.tryParse(values['order']!.trim()),
+      sourceDisplayLabel: values['source']!.trim().isEmpty
+          ? null
+          : values['source']!.trim(),
+      updatedAt: DateTime.now().toUtc(),
+    ),
+  );
 }
 
 Future<void> _editEpisodeDialog(
@@ -1511,108 +1229,57 @@ Future<void> _editEpisodeDialog(
   String fallback,
   Future<void> Function(EpisodeUserEdit) save,
 ) async {
-  final label = TextEditingController(text: current?.rawLabel ?? fallback);
-  final number = TextEditingController(text: current?.number?.toString() ?? '');
-  final season = TextEditingController(
-    text: current?.narrativeSeason?.toString() ?? '',
-  );
-  final order = TextEditingController(
-    text: current?.explicitOrder?.toString() ?? '',
-  );
-  final sourceLabel = TextEditingController(
-    text: current?.sourceDisplayLabel ?? '',
-  );
-  var kind = current?.kind ?? AnimeInstallmentKind.standard;
-  final accepted = await showDialog<bool>(
+  final result = await showDialog<InstallmentEditResult>(
     context: context,
-    builder: (context) => StatefulBuilder(
-      builder: (context, update) => AlertDialog(
-        title: const Text('Edit episode'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: label,
-                decoration: const InputDecoration(labelText: 'Episode label'),
-              ),
-              TextField(
-                controller: number,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'Episode number (optional)',
-                ),
-              ),
-              DropdownButtonFormField<AnimeInstallmentKind>(
-                initialValue: kind,
-                decoration: const InputDecoration(labelText: 'Type'),
-                items: AnimeInstallmentKind.values
-                    .map(
-                      (value) => DropdownMenuItem(
-                        value: value,
-                        child: Text(value.name.toUpperCase()),
-                      ),
-                    )
-                    .toList(),
-                onChanged: (value) => update(() => kind = value!),
-              ),
-              TextField(
-                controller: season,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'Narrative season (optional)',
-                ),
-              ),
-              TextField(
-                controller: order,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'Order (optional)',
-                ),
-              ),
-              TextField(
-                controller: sourceLabel,
-                decoration: const InputDecoration(
-                  labelText: 'Local source label (optional)',
-                ),
-              ),
-            ],
-          ),
+    builder: (_) => InstallmentEditDialog(
+      title: 'Edit episode',
+      kind: (current?.kind ?? AnimeInstallmentKind.standard).name,
+      kinds: AnimeInstallmentKind.values.map((v) => v.name).toList(),
+      fields: {
+        'label': (
+          label: 'Episode label',
+          value: current?.rawLabel ?? fallback,
+          numeric: false,
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Save'),
-          ),
-        ],
-      ),
+        'number': (
+          label: 'Episode number (optional)',
+          value: current?.number?.toString() ?? '',
+          numeric: true,
+        ),
+        'season': (
+          label: 'Narrative season (optional)',
+          value: current?.narrativeSeason?.toString() ?? '',
+          numeric: true,
+        ),
+        'order': (
+          label: 'Order (optional)',
+          value: current?.explicitOrder?.toString() ?? '',
+          numeric: true,
+        ),
+        'source': (
+          label: 'Local source label (optional)',
+          value: current?.sourceDisplayLabel ?? '',
+          numeric: false,
+        ),
+      },
     ),
   );
-  if (accepted == true && label.text.trim().isNotEmpty) {
-    await save(
-      EpisodeUserEdit(
-        episodeId: id,
-        rawLabel: label.text.trim(),
-        number: double.tryParse(number.text.trim()),
-        kind: kind,
-        narrativeSeason: int.tryParse(season.text.trim()),
-        explicitOrder: double.tryParse(order.text.trim()),
-        sourceDisplayLabel: sourceLabel.text.trim().isEmpty
-            ? null
-            : sourceLabel.text.trim(),
-        updatedAt: DateTime.now().toUtc(),
-      ),
-    );
-  }
-  label.dispose();
-  number.dispose();
-  season.dispose();
-  order.dispose();
-  sourceLabel.dispose();
+  if (result == null || !context.mounted) return;
+  final values = result.values;
+  await save(
+    EpisodeUserEdit(
+      episodeId: id,
+      rawLabel: values['label']!.trim(),
+      number: double.tryParse(values['number']!.trim()),
+      kind: AnimeInstallmentKind.values.byName(result.kind),
+      narrativeSeason: int.tryParse(values['season']!.trim()),
+      explicitOrder: double.tryParse(values['order']!.trim()),
+      sourceDisplayLabel: values['source']!.trim().isEmpty
+          ? null
+          : values['source']!.trim(),
+      updatedAt: DateTime.now().toUtc(),
+    ),
+  );
 }
 
 String _metadata(CanonicalMedia media) => switch (media) {
