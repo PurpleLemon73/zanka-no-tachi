@@ -5,8 +5,8 @@ import '../canonical/domain/identifiers.dart';
 import '../canonical/domain/media.dart';
 import '../product/product_controller.dart';
 import '../product/product_models.dart';
-import '../product/smart_resume.dart';
 import '../product/ui/design_system.dart';
+import '../product/ui/content_visuals.dart';
 import '../product/ui/settings_visuals.dart';
 import '../product/ui/product_navigation.dart';
 import 'tv_design_system.dart';
@@ -66,181 +66,173 @@ class TvProductShell extends StatelessWidget {
 class TvHomeScreen extends StatelessWidget {
   const TvHomeScreen({super.key, required this.controller});
   final ProductController controller;
-
   @override
   Widget build(BuildContext context) {
-    final hero = controller.continueItems
-        .where((item) => item.media is CanonicalAnime)
-        .firstOrNull;
-    final fallback = hero ?? controller.library.firstOrNull;
+    final hero =
+        controller.continueItems
+            .where((item) => item.media is CanonicalAnime)
+            .firstOrNull ??
+        controller.library.firstOrNull;
     return CustomScrollView(
       key: const PageStorageKey('tv-home-scroll'),
       slivers: [
         SliverPadding(
-          padding: const EdgeInsets.fromLTRB(
-            TvTokens.safeHorizontal,
-            TvTokens.safeVertical,
-            TvTokens.safeHorizontal,
-            0,
-          ),
-          sliver: SliverList.list(
-            children: [
-              if (fallback != null)
-                _TvHero(
-                  item: fallback,
-                  target: controller.smartResumeFor(fallback.media.id),
-                  onOpen: () => _openDetails(
-                    context,
-                    controller,
-                    fallback.media.id,
-                    autofocusResume: true,
-                  ),
-                )
-              else
-                SizedBox(
-                  height: TvTokens.heroHeight,
-                  child: Row(
-                    children: [
-                      const Expanded(
-                        child: ProductEmptyState(
-                          icon: Icons.live_tv,
-                          title: 'Your TV home is ready',
-                          message:
-                              'Browse the public catalog or add lawful local media.',
+          padding: const EdgeInsets.fromLTRB(32, 28, 32, 0),
+          sliver: SliverToBoxAdapter(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const ZankaPageHeading(
+                  eyebrow: 'Zanka no Tachi',
+                  title: 'Your stories.',
+                  tv: true,
+                ),
+                const SizedBox(height: 24),
+                if (controller.loadingLocal)
+                  const LinearProgressIndicator()
+                else if (hero != null)
+                  StoryFeature(
+                    item: hero,
+                    tv: true,
+                    autofocus: true,
+                    actionKey: const Key('tv-hero-action'),
+                    label:
+                        controller.smartResumeFor(hero.media.id)?.label ??
+                        'Open details',
+                    detail: hero.progressLabel ?? storyMetadata(hero),
+                    onOpen: () => _openDetails(
+                      context,
+                      controller,
+                      hero.media.id,
+                      autofocusResume: true,
+                    ),
+                  )
+                else
+                  StoryNotice(
+                    tv: true,
+                    title: 'Your TV home is ready',
+                    message:
+                        'Manga to read. Anime to watch. Browse the catalog or add your own local stories.',
+                    icon: Icons.live_tv_rounded,
+                    action: TvFocusable(
+                      key: const Key('tv-empty-browse'),
+                      autofocus: true,
+                      semanticLabel: 'Browse anime',
+                      onPressed: () => controller.selectTab(1),
+                      child: const Padding(
+                        padding: EdgeInsets.all(18),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.search_rounded),
+                            SizedBox(width: 12),
+                            Text(
+                              'Browse anime',
+                              style: TextStyle(fontSize: 22),
+                            ),
+                          ],
                         ),
                       ),
-                      SizedBox(
-                        width: 300,
-                        child: TvFocusable(
-                          key: const Key('tv-empty-browse'),
-                          autofocus: true,
-                          onPressed: () => controller.selectTab(1),
-                          semanticLabel: 'Browse anime',
-                          child: const ListTile(
-                            leading: Icon(Icons.search),
-                            title: Text('Browse anime'),
-                          ),
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
-                ),
-              const SizedBox(height: TvTokens.sectionGap),
-              if (controller.continueItems.isNotEmpty)
-                _TvSummaryRail(
-                  title: 'Continue',
-                  items: controller.continueItems,
-                  controller: controller,
-                ),
-              if (controller.library.isNotEmpty)
-                _TvSummaryRail(
-                  title: 'Anime Library',
-                  items: controller.library
-                      .where((item) => item.media is CanonicalAnime)
-                      .toList(),
-                  controller: controller,
-                ),
-              if (controller.discoverAnime.isNotEmpty)
-                _TvSearchRail(
-                  title: 'Discover Anime',
-                  items: controller.discoverAnime,
-                  controller: controller,
-                ),
-              if (controller.library.any(
-                (item) => item.media is CanonicalManga,
-              ))
-                _TvSummaryRail(
-                  title: 'Manga',
-                  items: controller.library
-                      .where((item) => item.media is CanonicalManga)
-                      .toList(),
-                  controller: controller,
-                ),
-              const SizedBox(height: TvTokens.safeVertical),
-            ],
+              ],
+            ),
           ),
         ),
+        for (final kind in CanonicalMediaKind.values)
+          if (controller.continueItems.any((item) => item.media.kind == kind))
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              sliver: SliverToBoxAdapter(
+                child: _TvSummaryRail(
+                  title: kind == CanonicalMediaKind.manga
+                      ? 'Continue reading'
+                      : 'Continue watching',
+                  items: controller.continueItems
+                      .where((item) => item.media.kind == kind)
+                      .toList(),
+                  controller: controller,
+                ),
+              ),
+            ),
+        if (controller.library.isNotEmpty)
+          SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            sliver: SliverToBoxAdapter(
+              child: _TvSummaryRail(
+                title: 'Your Library',
+                items: controller.library,
+                controller: controller,
+              ),
+            ),
+          ),
+        for (final kind in CanonicalMediaKind.values) ...[
+          SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            sliver: SliverToBoxAdapter(
+              child: StorySection(
+                kind == CanonicalMediaKind.manga
+                    ? 'Discover Manga'
+                    : 'Discover Anime',
+                tv: true,
+              ),
+            ),
+          ),
+          if (controller.loadingDiscover)
+            const SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.all(32),
+                child: LinearProgressIndicator(),
+              ),
+            )
+          else
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              sliver: SliverToBoxAdapter(
+                child: _TvSearchRail(
+                  items: kind == CanonicalMediaKind.manga
+                      ? controller.discoverManga
+                      : controller.discoverAnime,
+                  controller: controller,
+                ),
+              ),
+            ),
+        ],
+        if (controller.discoverFailures.isNotEmpty)
+          SliverToBoxAdapter(
+            child: StoryNotice(
+              tv: true,
+              title: 'Some sources are unavailable',
+              message: controller.discoverFailures.values.toSet().join(' '),
+              icon: Icons.cloud_off_outlined,
+              action: TextButton.icon(
+                onPressed: controller.refreshDiscover,
+                icon: const Icon(Icons.refresh),
+                label: const Text('Retry discovery'),
+              ),
+            ),
+          ),
+        if (controller.discoverCursors.isNotEmpty)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.all(32),
+              child: OutlinedButton(
+                key: const Key('discover-load-more'),
+                onPressed: controller.loadingMoreDiscover
+                    ? null
+                    : controller.loadMoreDiscover,
+                child: Text(
+                  controller.loadingMoreDiscover
+                      ? 'Loading…'
+                      : 'Load more discovery',
+                ),
+              ),
+            ),
+          ),
+        const SliverToBoxAdapter(child: SizedBox(height: 32)),
       ],
     );
   }
-}
-
-class _TvHero extends StatelessWidget {
-  const _TvHero({
-    required this.item,
-    required this.target,
-    required this.onOpen,
-  });
-  final ProductMediaSummary item;
-  final SmartResumeTarget? target;
-  final VoidCallback onOpen;
-
-  @override
-  Widget build(BuildContext context) => SizedBox(
-    height: TvTokens.heroHeight,
-    child: Row(
-      children: [
-        CoverArt(locator: item.media.coverLocator, width: 180, height: 260),
-        const SizedBox(width: 32),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                item.media.title.value,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.displaySmall,
-              ),
-              const SizedBox(height: 10),
-              Text(
-                item.media is CanonicalAnime ? 'Anime' : 'Manga',
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-              if (item.media.description?.value case final description?) ...[
-                const SizedBox(height: 12),
-                Text(
-                  description,
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodyLarge,
-                ),
-              ],
-              const SizedBox(height: 20),
-              SizedBox(
-                width: 310,
-                child: TvFocusable(
-                  key: const Key('tv-hero-action'),
-                  autofocus: true,
-                  onPressed: onOpen,
-                  semanticLabel: target?.label ?? 'Open details',
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 24,
-                      vertical: 16,
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.play_arrow),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            target?.label ?? 'Open details',
-                            style: Theme.of(context).textTheme.titleLarge,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    ),
-  );
 }
 
 class _TvSummaryRail extends StatelessWidget {
@@ -252,137 +244,87 @@ class _TvSummaryRail extends StatelessWidget {
   final String title;
   final List<ProductMediaSummary> items;
   final ProductController controller;
-
   @override
-  Widget build(BuildContext context) => _TvRail(
-    title: title,
-    itemCount: items.length,
-    builder: (context, index) {
-      final item = items[index];
-      final target = controller.smartResumeFor(item.media.id);
-      return _TvMediaCard(
-        title: item.media.title.value,
-        subtitle: target?.label ?? item.progressLabel ?? '',
-        cover: item.media.coverLocator,
-        onPressed: () => _openDetails(context, controller, item.media.id),
-      );
-    },
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      StorySection(title, tv: true),
+      StoryRail(
+        tv: true,
+        itemCount: items.length,
+        itemBuilder: (context, index) =>
+            _tvSummary(context, controller, items[index], prefix: 'tv-home'),
+      ),
+    ],
   );
 }
+
+Widget _tvSummary(
+  BuildContext context,
+  ProductController controller,
+  ProductMediaSummary item, {
+  String prefix = 'tv-library',
+}) => StoryTile(
+  tv: true,
+  actionKey: ValueKey('$prefix-${item.media.id.value}'),
+  title: item.media.title.value,
+  kind: item.media.kind,
+  cover: item.media.coverLocator,
+  metadata: storyMetadata(item),
+  status:
+      controller.smartResumeFor(item.media.id)?.label ??
+      item.progressLabel ??
+      storyLibraryStatus(item),
+  favorite: item.isFavorite,
+  needsRepair: item.hasMissingLocalSource,
+  onOpen: () => _openDetails(context, controller, item.media.id),
+);
 
 class _TvSearchRail extends StatelessWidget {
-  const _TvSearchRail({
-    required this.title,
-    required this.items,
-    required this.controller,
-  });
-  final String title;
+  const _TvSearchRail({required this.items, required this.controller});
   final List<ProductSearchResult> items;
   final ProductController controller;
-
   @override
-  Widget build(BuildContext context) => _TvRail(
-    title: title,
-    itemCount: items.length,
-    builder: (context, index) {
-      final item = items[index];
-      return _TvMediaCard(
-        title: item.title,
-        subtitle: item.subtitle ?? '${item.sources.length} source(s)',
-        cover: item.coverUrl?.toString(),
-        onPressed: () => _openResult(context, controller, item),
-      );
-    },
-  );
+  Widget build(BuildContext context) => items.isEmpty
+      ? const StoryNotice(
+          tv: true,
+          title: 'Discovery unavailable',
+          message: 'Your saved collection is still available.',
+          icon: Icons.cloud_off_outlined,
+        )
+      : StoryRail(
+          tv: true,
+          itemCount: items.length,
+          itemBuilder: (context, index) => _tvResult(
+            context,
+            controller,
+            items[index],
+            prefix: 'tv-discover',
+          ),
+        );
 }
 
-class _TvRail extends StatelessWidget {
-  const _TvRail({
-    required this.title,
-    required this.itemCount,
-    required this.builder,
-  });
-  final String title;
-  final int itemCount;
-  final NullableIndexedWidgetBuilder builder;
-
-  @override
-  Widget build(BuildContext context) {
-    if (itemCount == 0) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.only(bottom: TvTokens.sectionGap),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          TvSectionTitle(title),
-          SizedBox(
-            height: TvTokens.cardHeight + 72,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: itemCount,
-              itemBuilder: builder,
-              separatorBuilder: (_, _) => const SizedBox(width: 20),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _TvMediaCard extends StatelessWidget {
-  const _TvMediaCard({
-    required this.title,
-    required this.subtitle,
-    required this.cover,
-    required this.onPressed,
-    this.focusNode,
-  });
-  final String title;
-  final String subtitle;
-  final String? cover;
-  final VoidCallback onPressed;
-  final FocusNode? focusNode;
-
-  @override
-  Widget build(BuildContext context) => SizedBox(
-    width: TvTokens.cardWidth,
-    child: TvFocusable(
-      focusNode: focusNode,
-      onPressed: onPressed,
-      semanticLabel: [
-        title,
-        subtitle,
-      ].where((value) => value.isNotEmpty).join(', '),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          CoverArt(
-            locator: cover,
-            width: TvTokens.cardWidth,
-            height: TvTokens.cardHeight,
-          ),
-          Padding(
-            padding: const EdgeInsets.all(10),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
-                if (subtitle.isNotEmpty)
-                  Text(
-                    subtitle,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    ),
-  );
-}
+Widget _tvResult(
+  BuildContext context,
+  ProductController controller,
+  ProductSearchResult result, {
+  FocusNode? focusNode,
+  String prefix = 'tv-search',
+}) => StoryTile(
+  tv: true,
+  focusNode: focusNode,
+  actionKey: ValueKey(
+    '$prefix-${result.sources.first.providerId.value}-${result.sources.first.externalId}',
+  ),
+  title: result.title,
+  kind: result.kind,
+  cover: result.coverUrl?.toString(),
+  metadata: storySources(result.sources.length),
+  status: result.subtitle ?? '',
+  saved: result.persisted?.isSaved == true,
+  favorite: result.persisted?.isFavorite == true,
+  onOpen: () => _openResult(context, controller, result),
+);
 
 class TvSearchScreen extends StatefulWidget {
   const TvSearchScreen({super.key, required this.controller});
@@ -408,78 +350,151 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(
-      horizontal: TvTokens.safeHorizontal,
-      vertical: TvTokens.safeVertical,
-    ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('Search', style: Theme.of(context).textTheme.displaySmall),
-        const SizedBox(height: 20),
-        TextField(
-          key: const Key('tv-search-field'),
-          controller: text,
-          autofocus: true,
-          textInputAction: TextInputAction.search,
-          decoration: const InputDecoration(
-            prefixIcon: Icon(Icons.search),
-            hintText: 'Search manga and anime',
-          ),
-          onChanged: widget.controller.scheduleSearch,
-          onSubmitted: (value) async {
-            await widget.controller.submitSearch(value);
-            if (mounted && widget.controller.searchResults.isNotEmpty) {
-              firstResultFocus.requestFocus();
-            }
-          },
-        ),
-        const SizedBox(height: 18),
-        Row(
-          children: CanonicalMediaKind.values
-              .map(
-                (kind) => Padding(
-                  padding: const EdgeInsets.only(right: 12),
-                  child: FilterChip(
-                    label: Text(
-                      kind == CanonicalMediaKind.anime ? 'Anime' : 'Manga',
-                    ),
-                    selected: widget.controller.searchKinds.contains(kind),
-                    onSelected: (enabled) =>
-                        widget.controller.setSearchKind(kind, enabled),
-                  ),
+  Widget build(BuildContext context) => CustomScrollView(
+    key: const PageStorageKey('tv-search-scroll'),
+    slivers: [
+      SliverPadding(
+        padding: const EdgeInsets.fromLTRB(32, 28, 32, 0),
+        sliver: SliverToBoxAdapter(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const ZankaPageHeading(
+                eyebrow: 'Find your next story',
+                title: 'Search',
+                tv: true,
+              ),
+              const SizedBox(height: 24),
+              TextField(
+                key: const Key('tv-search-field'),
+                controller: text,
+                autofocus: true,
+                textInputAction: TextInputAction.search,
+                style: const TextStyle(fontSize: 24),
+                decoration: const InputDecoration(
+                  prefixIcon: Icon(Icons.search_rounded),
+                  hintText: 'Search manga and anime',
                 ),
-              )
-              .toList(),
+                onChanged: widget.controller.scheduleSearch,
+                onSubmitted: (value) async {
+                  await widget.controller.submitSearch(value);
+                  if (mounted &&
+                      widget.controller.searchQuery == value.trim() &&
+                      widget.controller.searchResults.isNotEmpty) {
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (mounted &&
+                          ModalRoute.of(context)?.isCurrent == true &&
+                          widget.controller.searchQuery == value.trim()) {
+                        firstResultFocus.requestFocus();
+                      }
+                    });
+                  }
+                },
+              ),
+              const SizedBox(height: 18),
+              Wrap(
+                spacing: 12,
+                runSpacing: 8,
+                children: CanonicalMediaKind.values
+                    .map(
+                      (kind) => FilterChip(
+                        label: Text(
+                          kind == CanonicalMediaKind.anime ? 'Anime' : 'Manga',
+                          style: const TextStyle(fontSize: 20),
+                        ),
+                        selected: widget.controller.searchKinds.contains(kind),
+                        onSelected: (enabled) =>
+                            widget.controller.setSearchKind(kind, enabled),
+                      ),
+                    )
+                    .toList(),
+              ),
+              if (widget.controller.searching)
+                const Padding(
+                  padding: EdgeInsets.only(top: 18),
+                  child: LinearProgressIndicator(),
+                ),
+            ],
+          ),
         ),
-        const SizedBox(height: 18),
-        Expanded(
-          child: GridView.builder(
-            key: const Key('tv-search-results'),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 5,
-              mainAxisExtent: TvTokens.cardHeight + 72,
-              crossAxisSpacing: 20,
-              mainAxisSpacing: 20,
+      ),
+      if (widget.controller.searchFailures.isNotEmpty)
+        SliverToBoxAdapter(
+          child: StoryNotice(
+            tv: true,
+            title: 'Some sources could not be searched',
+            compact: widget.controller.searchResults.isNotEmpty,
+            message: widget.controller.searchResults.isEmpty
+                ? widget.controller.searchFailures.values.toSet().join(' ')
+                : 'Showing available results. Your saved collection is unchanged.',
+            action: TextButton.icon(
+              onPressed: () => widget.controller.submitSearch(text.text),
+              icon: const Icon(Icons.refresh),
+              label: const Text('Retry search'),
             ),
+          ),
+        ),
+      if (widget.controller.searchQuery.isEmpty)
+        const SliverToBoxAdapter(
+          child: StoryNotice(
+            tv: true,
+            title: 'A title. A new beginning.',
+            message: 'Search for manga or anime across your enabled sources.',
+            icon: Icons.travel_explore_rounded,
+          ),
+        )
+      else if (!widget.controller.searching &&
+          widget.controller.searchResults.isEmpty &&
+          widget.controller.searchFailures.isEmpty)
+        const SliverToBoxAdapter(
+          child: StoryNotice(
+            tv: true,
+            title: 'No results',
+            message: 'Try another title or enable another media scope.',
+            icon: Icons.search_off,
+          ),
+        )
+      else if (widget.controller.searchResults.isNotEmpty) ...[
+        SliverToBoxAdapter(
+          child: StorySection(
+            '${widget.controller.searchResults.length} titles',
+            tv: true,
+          ),
+        ),
+        SliverPadding(
+          key: const Key('tv-search-results'),
+          padding: const EdgeInsets.all(32),
+          sliver: StorySliverGrid(
+            tv: true,
             itemCount: widget.controller.searchResults.length,
-            itemBuilder: (context, index) {
-              final result = widget.controller.searchResults[index];
-              return _TvMediaCard(
-                focusNode: index == 0 ? firstResultFocus : null,
-                title: result.title,
-                subtitle:
-                    result.subtitle ?? '${result.sources.length} source(s)',
-                cover: result.coverUrl?.toString(),
-                onPressed: () =>
-                    _openResult(context, widget.controller, result),
-              );
-            },
+            itemBuilder: (context, index) => _tvResult(
+              context,
+              widget.controller,
+              widget.controller.searchResults[index],
+              focusNode: index == 0 ? firstResultFocus : null,
+            ),
           ),
         ),
       ],
-    ),
+      if (widget.controller.searchCursors.isNotEmpty)
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: OutlinedButton(
+              key: const Key('search-load-more'),
+              onPressed: widget.controller.loadingMoreSearch
+                  ? null
+                  : widget.controller.loadMoreSearch,
+              child: Text(
+                widget.controller.loadingMoreSearch
+                    ? 'Loading…'
+                    : 'Load more results',
+              ),
+            ),
+          ),
+        ),
+      const SliverToBoxAdapter(child: SizedBox(height: 32)),
+    ],
   );
 }
 
@@ -517,78 +532,78 @@ class _TvLibraryScreenState extends State<TvLibraryScreen> {
         ),
       );
     }
-    return Padding(
-      padding: const EdgeInsets.symmetric(
-        horizontal: TvTokens.safeHorizontal,
-        vertical: TvTokens.safeVertical,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('Library', style: Theme.of(context).textTheme.displaySmall),
-          const SizedBox(height: 14),
-          Wrap(
-            spacing: 12,
-            children: [
-              for (final value in _TvLibraryFilter.values)
-                FilterChip(
-                  label: Text(switch (value) {
-                    _TvLibraryFilter.all => 'All',
-                    _TvLibraryFilter.anime => 'Anime',
-                    _TvLibraryFilter.manga => 'Manga',
-                  }),
-                  selected: filter == value,
-                  onSelected: (_) => setState(() => filter = value),
+    return CustomScrollView(
+      key: const PageStorageKey('tv-library-scroll'),
+      slivers: [
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(32, 28, 32, 0),
+          sliver: SliverToBoxAdapter(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                ZankaPageHeading(
+                  eyebrow: 'Your collection',
+                  title: 'Library',
+                  description: '${values.length} titles in this view',
+                  tv: true,
                 ),
-              FilterChip(
-                label: const Text('A–Z'),
-                selected: alphabetical,
-                onSelected: (value) => setState(() => alphabetical = value),
-              ),
-            ],
+                const SizedBox(height: 20),
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 10,
+                  children: [
+                    for (final value in _TvLibraryFilter.values)
+                      FilterChip(
+                        label: Text(switch (value) {
+                          _TvLibraryFilter.all => 'All',
+                          _TvLibraryFilter.anime => 'Anime',
+                          _TvLibraryFilter.manga => 'Manga',
+                        }, style: const TextStyle(fontSize: 20)),
+                        selected: filter == value,
+                        onSelected: (_) => setState(() => filter = value),
+                      ),
+                    FilterChip(
+                      label: const Text('A–Z', style: TextStyle(fontSize: 20)),
+                      selected: alphabetical,
+                      onSelected: (value) =>
+                          setState(() => alphabetical = value),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
-          const SizedBox(height: 14),
-          Expanded(
-            child: values.isEmpty
-                ? const ProductEmptyState(
-                    icon: Icons.video_library_outlined,
-                    title: 'Your Library is empty',
-                    message:
-                        'Saved media remains available here even if a source is offline.',
-                  )
-                : GridView.builder(
-                    key: const Key('tv-library-grid'),
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 5,
-                          mainAxisExtent: TvTokens.cardHeight + 72,
-                          crossAxisSpacing: 20,
-                          mainAxisSpacing: 20,
-                        ),
-                    itemCount: values.length,
-                    itemBuilder: (context, index) {
-                      final item = values[index];
-                      return _TvMediaCard(
-                        title: item.media.title.value,
-                        subtitle: item.hasMissingLocalSource
-                            ? 'Needs repair'
-                            : widget.controller
-                                      .smartResumeFor(item.media.id)
-                                      ?.label ??
-                                  item.progressLabel ??
-                                  '',
-                        cover: item.media.coverLocator,
-                        onPressed: () => _openDetails(
-                          context,
-                          widget.controller,
-                          item.media.id,
-                        ),
-                      );
-                    },
-                  ),
+        ),
+        if (widget.controller.loadingLocal)
+          const SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.all(32),
+              child: LinearProgressIndicator(),
+            ),
+          )
+        else if (values.isEmpty)
+          const SliverToBoxAdapter(
+            child: StoryNotice(
+              tv: true,
+              title: 'Your Library is empty',
+              message:
+                  'Saved media remains available here even if a source is offline.',
+              icon: Icons.video_library_outlined,
+            ),
+          )
+        else
+          SliverPadding(
+            key: const Key('tv-library-grid'),
+            padding: const EdgeInsets.all(32),
+            sliver: StorySliverGrid(
+              tv: true,
+              itemCount: values.length,
+              itemBuilder: (context, index) =>
+                  _tvSummary(context, widget.controller, values[index]),
+            ),
           ),
-        ],
-      ),
+        const SliverToBoxAdapter(child: SizedBox(height: 32)),
+      ],
     );
   }
 }

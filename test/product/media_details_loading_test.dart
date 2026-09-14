@@ -154,11 +154,8 @@ void main() {
                   )
                   .onPressed!
             : tester
-                  .widget<ListTile>(
-                    find.ancestor(
-                      of: oldTitle,
-                      matching: find.byType(ListTile),
-                    ),
+                  .widget<InkWell>(
+                    find.ancestor(of: oldTitle, matching: find.byType(InkWell)),
                   )
                   .onTap!;
         open();

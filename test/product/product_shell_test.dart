@@ -128,8 +128,12 @@ void main() {
     await tester.pumpAndSettle();
 
     const homeKey = Key('nav-home');
-    for (var attempt = 0; attempt < 12 && !_focusWithin(homeKey); attempt++) {
-      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+    // Home starts on its content action. Reach the navigation rail with the
+    // remote instead of Tab-cycling through a variable number of discoveries.
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+    await tester.pumpAndSettle();
+    for (var attempt = 0; attempt < 4 && !_focusWithin(homeKey); attempt++) {
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
       await tester.pumpAndSettle();
     }
     expect(_focusWithin(homeKey), isTrue);
@@ -220,6 +224,8 @@ void main() {
       findsOneWidget,
     );
 
+    await tester.ensureVisible(find.text('MAD'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('MAD'));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('media-details')), findsOneWidget);
@@ -351,7 +357,7 @@ void main() {
     );
     await tester.pumpWidget(ZankaApp(repository: repository));
     await tester.pumpAndSettle();
-    expect(find.text('Continue'), findsOneWidget);
+    expect(find.text('Continue reading'), findsOneWidget);
     expect(find.textContaining('Page 8'), findsOneWidget);
     expect(find.text('Berserk (M3 synthetic)'), findsWidgets);
     await tester.drag(

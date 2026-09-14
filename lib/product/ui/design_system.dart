@@ -2,8 +2,6 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
-import '../../canonical/domain/media.dart';
-import '../product_models.dart';
 import '../../app/app_preferences.dart';
 
 abstract final class ZankaSpace {
@@ -239,10 +237,17 @@ class ProductEmptyState extends StatelessWidget {
 }
 
 class CoverArt extends StatelessWidget {
-  const CoverArt({super.key, this.locator, this.width = 88, this.height = 124});
+  const CoverArt({
+    super.key,
+    this.locator,
+    this.width = 88,
+    this.height = 124,
+    this.cacheWidth,
+  });
   final String? locator;
   final double width;
   final double height;
+  final int? cacheWidth;
   @override
   Widget build(BuildContext context) {
     final uri = locator == null ? null : Uri.tryParse(locator!);
@@ -263,6 +268,7 @@ class CoverArt extends StatelessWidget {
                 (uri?.scheme == 'file' || File(locator!).isAbsolute)
             ? Image.file(
                 File(uri?.scheme == 'file' ? uri!.toFilePath() : locator!),
+                cacheWidth: cacheWidth,
                 width: width,
                 height: height,
                 fit: BoxFit.cover,
@@ -272,6 +278,7 @@ class CoverArt extends StatelessWidget {
             ? placeholder
             : Image.network(
                 uri.toString(),
+                cacheWidth: cacheWidth,
                 width: width,
                 height: height,
                 fit: BoxFit.cover,
@@ -288,79 +295,3 @@ class CoverArt extends StatelessWidget {
     );
   }
 }
-
-class CanonicalMediaCard extends StatelessWidget {
-  const CanonicalMediaCard({
-    super.key,
-    required this.summary,
-    required this.onTap,
-  });
-  final ProductMediaSummary summary;
-  final VoidCallback onTap;
-  @override
-  Widget build(BuildContext context) => Semantics(
-    button: true,
-    label:
-        '${summary.media.title.value}, ${_mediaLabel(summary.media)}, '
-        '${summary.bindings.length} sources${summary.isSaved ? ', in Library' : ''}',
-    child: Card(
-      child: InkWell(
-        key: ValueKey('media-card-${summary.media.id.value}'),
-        borderRadius: BorderRadius.circular(ZankaRadius.card),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(ZankaSpace.sm),
-          child: Row(
-            children: [
-              CoverArt(
-                locator: summary.media.coverLocator,
-                width: 72,
-                height: 100,
-              ),
-              const SizedBox(width: ZankaSpace.md),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      summary.media.title.value,
-                      style: Theme.of(context).textTheme.titleMedium,
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: ZankaSpace.xs),
-                    Text(_mediaLabel(summary.media)),
-                    const SizedBox(height: ZankaSpace.sm),
-                    Wrap(
-                      spacing: ZankaSpace.xs,
-                      children: [
-                        SourceBadge(
-                          '${summary.bindings.length} source${summary.bindings.length == 1 ? '' : 's'}',
-                        ),
-                        if (summary.isSaved)
-                          const Chip(label: Text('In Library')),
-                        if (summary.isFavorite)
-                          const Icon(Icons.favorite, semanticLabel: 'Favorite'),
-                        if (summary.hasMissingLocalSource)
-                          const Chip(
-                            avatar: Icon(Icons.link_off, size: 16),
-                            label: Text('Needs repair'),
-                          ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    ),
-  );
-}
-
-String _mediaLabel(CanonicalMedia media) => switch (media) {
-  CanonicalManga() => 'Manga · ${media.status.name}',
-  CanonicalAnime(:final format) =>
-    '${format.name.toUpperCase()} · ${media.status.name}',
-};

@@ -159,6 +159,12 @@ class _NavigationItemState extends State<_NavigationItem> {
         : scheme.onSurfaceVariant;
     final label = Text(
       widget.label,
+      // Four persistent touch destinations must remain legible on narrow
+      // phones. Content still follows the full system scale; labels keep their
+      // complete semantics and do not break into single-letter lines.
+      textScaler: !widget.vertical && !widget.tv
+          ? MediaQuery.textScalerOf(context).clamp(maxScaleFactor: 1.3)
+          : null,
       style: TextStyle(
         color: foreground,
         fontSize: widget.tv
