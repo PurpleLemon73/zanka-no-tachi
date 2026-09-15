@@ -13,6 +13,7 @@ import '../product/smart_resume.dart';
 import '../product/ui/design_system.dart';
 import '../product/ui/details_actions.dart';
 import '../product/ui/details_dialogs.dart';
+import '../product/ui/episode_watch_actions.dart';
 import '../reader/reader_domain.dart';
 import '../reader/reader_repository.dart';
 import '../reader/ui/manga_reader_screen.dart';
@@ -159,7 +160,22 @@ class _TvMediaDetailsScreenState extends State<TvMediaDetailsScreen> {
                           ),
                           const SizedBox(height: 30),
                           if (value.summary.media is CanonicalAnime)
-                            _TvEpisodes(details: value, onOpen: _openEpisode)
+                            _TvEpisodes(
+                              details: value,
+                              onOpen: _openEpisode,
+                              episodeActions: (id) => EpisodeWatchActions(
+                                key: ValueKey(id),
+                                controller: widget.controller,
+                                details: value,
+                                episodeId: id,
+                                tv: true,
+                                onChanged: (updated) {
+                                  if (mounted) {
+                                    setState(() => details = updated);
+                                  }
+                                },
+                              ),
+                            )
                           else
                             _TvChapters(details: value, onOpen: _openChapter),
                         ],
@@ -495,8 +511,13 @@ double _installmentRailHeight(BuildContext context, {required bool chapter}) {
 }
 
 class _TvEpisodes extends StatelessWidget {
-  const _TvEpisodes({required this.details, required this.onOpen});
+  const _TvEpisodes({
+    required this.details,
+    required this.onOpen,
+    required this.episodeActions,
+  });
   final ProductMediaDetails details;
+  final Widget Function(CanonicalEpisodeId) episodeActions;
   final void Function(ProductMediaDetails, PlaybackEpisodeAvailability) onOpen;
 
   @override
@@ -505,57 +526,72 @@ class _TvEpisodes extends StatelessWidget {
     children: [
       const TvSectionTitle('Episodes'),
       SizedBox(
-        height: _installmentRailHeight(context, chapter: false),
+        height:
+            _installmentRailHeight(context, chapter: false) +
+            kMinInteractiveDimension,
         child: ListView.separated(
           key: const Key('tv-episode-rail'),
           scrollDirection: Axis.horizontal,
-          itemCount: details.playbackEpisodes.length,
+          itemCount: details.episodes.length,
           itemBuilder: (context, index) {
-            final item = details.playbackEpisodes[index];
+            final episode = details.episodes[index].episode;
+            final item = details.playbackEpisodes
+                .where((value) => value.episode.id == episode.id)
+                .firstOrNull;
+            final openable = item?.openableBindings ?? const [];
             final watched = details.episodeCompletions.any(
-              (value) => value.episodeId == item.episode.id,
+              (value) => value.episodeId == episode.id,
             );
-            final highlighted =
-                details.smartResume?.episodeId == item.episode.id;
+            final highlighted = details.smartResume?.episodeId == episode.id;
             return SizedBox(
               width: 180,
-              child: TvFocusable(
-                onPressed: item.openableBindings.isEmpty
-                    ? null
-                    : () => onOpen(details, item),
-                semanticLabel:
-                    '${item.episode.label.rawLabel}, ${watched
-                        ? 'watched'
-                        : highlighted
-                        ? 'up next'
-                        : 'unwatched'}, ${item.openableBindings.isEmpty ? 'unavailable' : '${item.openableBindings.length} playable source(s)'}',
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        item.episode.label.rawLabel,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.titleMedium,
+              child: Column(
+                children: [
+                  Expanded(
+                    child: TvFocusable(
+                      onPressed: openable.isEmpty
+                          ? null
+                          : () => onOpen(details, item!),
+                      semanticLabel:
+                          '${episode.label.rawLabel}, ${watched
+                              ? 'watched'
+                              : highlighted
+                              ? 'up next'
+                              : 'unwatched'}, ${openable.isEmpty ? 'unavailable' : '${openable.length} playable source(s)'}',
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              episode.label.rawLabel,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.titleMedium,
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              watched
+                                  ? 'Watched'
+                                  : highlighted
+                                  ? 'Resume / next'
+                                  : openable.isEmpty
+                                  ? 'Unavailable'
+                                  : '${openable.length} source(s)',
+                              maxLines: 3,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
                       ),
-                      const SizedBox(height: 8),
-                      Text(
-                        watched
-                            ? 'Watched'
-                            : highlighted
-                            ? 'Resume / next'
-                            : item.openableBindings.isEmpty
-                            ? 'Unavailable'
-                            : '${item.openableBindings.length} source(s)',
-                        maxLines: 3,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
+                    ),
                   ),
-                ),
+                  SizedBox(
+                    height: kMinInteractiveDimension,
+                    child: episodeActions(episode.id),
+                  ),
+                ],
               ),
             );
           },

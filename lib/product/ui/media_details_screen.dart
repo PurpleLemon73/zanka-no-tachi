@@ -19,6 +19,7 @@ import '../../product_maturity/maturity_domain.dart';
 import '../../local_library/local_asset.dart';
 import 'details_actions.dart';
 import 'details_dialogs.dart';
+import 'episode_watch_actions.dart';
 import '../smart_resume.dart';
 
 class MediaDetailsScreen extends StatefulWidget {
@@ -239,6 +240,15 @@ class _MediaDetailsScreenState extends State<MediaDetailsScreen> {
           ? const Center(child: CircularProgressIndicator())
           : _DetailsBody(
               details: value,
+              episodeActions: (id) => EpisodeWatchActions(
+                key: ValueKey(id),
+                controller: widget.controller,
+                details: value,
+                episodeId: id,
+                onChanged: (updated) {
+                  if (mounted) setState(() => details = updated);
+                },
+              ),
               onLibrary: _library,
               onPreference: _preference,
               readerRepository: widget.controller.repository.reader,
@@ -262,6 +272,7 @@ class _MediaDetailsScreenState extends State<MediaDetailsScreen> {
 class _DetailsBody extends StatefulWidget {
   const _DetailsBody({
     required this.details,
+    required this.episodeActions,
     required this.onLibrary,
     required this.onPreference,
     required this.readerRepository,
@@ -273,6 +284,7 @@ class _DetailsBody extends StatefulWidget {
     required this.onRepair,
   });
   final ProductMediaDetails details;
+  final Widget Function(CanonicalEpisodeId) episodeActions;
   final Future<void> Function({
     bool? saved,
     bool? favorite,
@@ -601,7 +613,9 @@ class _DetailsBodyState extends State<_DetailsBody> {
                 (value) =>
                     value.episodeId == details.episodes[index].episode.id,
               ),
-              onChanged: onRefresh,
+              actions: widget.episodeActions(
+                details.episodes[index].episode.id,
+              ),
               edit: details.episodeEdits[details.episodes[index].episode.id],
               onEdit: onEditEpisode,
               isSmartTarget:
@@ -1022,7 +1036,7 @@ class _EpisodeTile extends StatelessWidget {
     required this.playbackRepository,
     required this.onPlayerClosed,
     required this.isWatched,
-    required this.onChanged,
+    required this.actions,
     required this.edit,
     required this.onEdit,
     this.isSmartTarget = false,
@@ -1034,7 +1048,7 @@ class _EpisodeTile extends StatelessWidget {
   final PlaybackRepository? playbackRepository;
   final Future<void> Function() onPlayerClosed;
   final bool isWatched;
-  final Future<void> Function() onChanged;
+  final Widget actions;
   final EpisodeUserEdit? edit;
   final Future<void> Function(EpisodeUserEdit) onEdit;
   final bool isSmartTarget;
@@ -1069,18 +1083,7 @@ class _EpisodeTile extends StatelessWidget {
         episode.label.rawLabel,
         onEdit,
       ),
-      trailing: IconButton(
-        tooltip: isWatched ? 'Mark unwatched' : 'Mark watched',
-        icon: Icon(isWatched ? Icons.check_circle : Icons.circle_outlined),
-        onPressed: playbackRepository == null
-            ? null
-            : () async {
-                isWatched
-                    ? await playbackRepository!.markUnwatched(episode.id)
-                    : await playbackRepository!.markWatched(episode.id);
-                await onChanged();
-              },
-      ),
+      trailing: actions,
       onTap: openable.isEmpty || playbackRepository == null
           ? () => _placeholder(
               context,

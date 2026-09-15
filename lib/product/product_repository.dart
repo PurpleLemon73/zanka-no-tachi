@@ -87,6 +87,17 @@ class ProductRepository {
     final episodes = await live.availability.episodes(id);
     final readerChapters = await reader?.chapters(id) ?? const [];
     final playbackEpisodes = await playback?.episodes(id) ?? const [];
+    if (media is CanonicalAnime) {
+      final ordered = playbackEpisodes.isNotEmpty
+          ? playbackEpisodes.map((item) => item.episode).toList()
+          : await live.database.orderedEpisodesFor(id);
+      final indexes = {
+        for (var i = 0; i < ordered.length; i++) ordered[i].id: i,
+      };
+      episodes.sort(
+        (a, b) => indexes[a.episode.id]!.compareTo(indexes[b.episode.id]!),
+      );
+    }
     final preferred = await live.database.preferredProvider(id);
     final chapterCompletions = await live.database.chapterCompletionsFor(id);
     final episodeCompletions = await live.database.episodeCompletionsFor(id);
@@ -139,6 +150,33 @@ class ProductRepository {
       smartResume: smartResume,
     );
   }
+
+  /// Update only this title's watched presentation. No provider refresh,
+  /// media resolution, full-library reload, or fake playback progress.
+  Future<ProductMediaDetails> setEpisodeWatchState(
+    ProductMediaDetails current,
+    Iterable<CanonicalEpisodeId> episodeIds, {
+    required bool watched,
+    CanonicalEpisodeId? previousOf,
+  }) => live.database.transaction(() async {
+    final completions = await live.database.setEpisodesWatched(
+      current.summary.media.id,
+      episodeIds,
+      watched: watched,
+      previousOf: previousOf,
+    );
+    final target = await SmartResumePolicy.anime(
+      episodes: current.playbackEpisodes,
+      completed: completions.map((value) => value.episodeId).toSet(),
+      progress: current.summary.animeProgress,
+      preferredProvider: current.preferredProvider,
+      resumeFor: (binding) => live.database.animeSourcePlaybackResume(
+        binding.providerId,
+        binding.externalId,
+      ),
+    );
+    return current.withEpisodeWatchState(completions, target);
+  });
 
   Future<SmartResumeTarget?> smartResume(CanonicalMediaId id) async =>
       (await details(id))?.smartResume;

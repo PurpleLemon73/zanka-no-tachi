@@ -51,19 +51,7 @@ class PlaybackRepository {
     CanonicalMediaId requestedId,
   ) async {
     final mediaId = await database.resolveCanonicalId(requestedId);
-    final episodes = await database.episodesFor(mediaId);
-    final edits = await database.episodeUserEditsFor(mediaId);
-    episodes.sort((left, right) {
-      final l = edits[left.id]?.explicitOrder;
-      final r = edits[right.id]?.explicitOrder;
-      if (l != null || r != null) {
-        final compared = (l ?? left.label.number ?? double.infinity).compareTo(
-          r ?? right.label.number ?? double.infinity,
-        );
-        if (compared != 0) return compared;
-      }
-      return _compareEpisodes(left, right);
-    });
+    final episodes = await database.orderedEpisodesFor(mediaId);
     return Future.wait(
       episodes.map((episode) async {
         final bindings = await database.episodeBindingsFor(episode.id);
@@ -262,20 +250,4 @@ class PlaybackRepository {
     final next = index + direction;
     return index < 0 || next < 0 || next >= values.length ? null : values[next];
   }
-}
-
-int _compareEpisodes(CanonicalEpisode left, CanonicalEpisode right) {
-  final l = left.label.number;
-  final r = right.label.number;
-  if (l != null && r != null) {
-    final compared = l.compareTo(r);
-    if (compared != 0) return compared;
-  } else if (l != null) {
-    return -1;
-  } else if (r != null) {
-    return 1;
-  }
-  return left.label.rawLabel.toLowerCase().compareTo(
-    right.label.rawLabel.toLowerCase(),
-  );
 }

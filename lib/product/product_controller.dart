@@ -263,6 +263,29 @@ class ProductController extends ChangeNotifier {
   Future<ProductMediaDetails> refreshDetails(CanonicalMediaId id) =>
       repository.refreshDetails(id);
 
+  Future<ProductMediaDetails> setEpisodeWatchState(
+    ProductMediaDetails current,
+    Iterable<CanonicalEpisodeId> episodeIds, {
+    required bool watched,
+    CanonicalEpisodeId? previousOf,
+  }) async {
+    final updated = await repository.setEpisodeWatchState(
+      current,
+      episodeIds,
+      watched: watched,
+      previousOf: previousOf,
+    );
+    final id = updated.summary.media.id;
+    persisted = [
+      for (final item in persisted)
+        item.media.id == id ? updated.summary : item,
+    ];
+    smartResumeTargets = {...smartResumeTargets}..remove(id);
+    if (updated.smartResume case final target?) smartResumeTargets[id] = target;
+    notifyListeners();
+    return updated;
+  }
+
   Future<ProductMediaDetails> updateLibrary(
     ProductMediaDetails details, {
     bool? saved,

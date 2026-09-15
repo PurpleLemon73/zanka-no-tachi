@@ -70,6 +70,37 @@ class ProductMediaDetails {
   final List<LocalAsset> localAssets;
   final MetadataOverride? metadataOverride;
   final SmartResumeTarget? smartResume;
+
+  ProductMediaDetails withEpisodeWatchState(
+    List<EpisodeCompletion> completions,
+    SmartResumeTarget? target,
+  ) => ProductMediaDetails(
+    summary: ProductMediaSummary(
+      media: summary.media,
+      bindings: summary.bindings,
+      library: summary.library,
+      mangaProgress: summary.mangaProgress,
+      animeProgress: summary.animeProgress,
+      progressLabel: summary.progressLabel,
+      progressCompleted: completions.any(
+        (value) => value.episodeId == summary.animeProgress?.episodeId,
+      ),
+      hasMissingLocalSource: summary.hasMissingLocalSource,
+      smartResume: target,
+    ),
+    chapters: chapters,
+    episodes: episodes,
+    readerChapters: readerChapters,
+    playbackEpisodes: playbackEpisodes,
+    preferredProvider: preferredProvider,
+    chapterCompletions: chapterCompletions,
+    episodeCompletions: completions,
+    chapterEdits: chapterEdits,
+    episodeEdits: episodeEdits,
+    localAssets: localAssets,
+    metadataOverride: metadataOverride,
+    smartResume: target,
+  );
 }
 
 class ProductSearchResult {

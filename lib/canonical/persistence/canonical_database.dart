@@ -629,6 +629,41 @@ class CanonicalDatabase extends _$CanonicalDatabase {
         .toList();
   }
 
+  /// The existing player navigation order, shared with explicit episode
+  /// management. Display-title overrides and source-list order are not inputs.
+  Future<List<CanonicalEpisode>> orderedEpisodesFor(
+    CanonicalMediaId mediaId,
+  ) async {
+    final episodes = await episodesFor(mediaId);
+    final edits = await episodeUserEditsFor(mediaId);
+    episodes.sort((left, right) {
+      final l = edits[left.id]?.explicitOrder;
+      final r = edits[right.id]?.explicitOrder;
+      if (l != null || r != null) {
+        final compared = (l ?? left.label.number ?? double.infinity).compareTo(
+          r ?? right.label.number ?? double.infinity,
+        );
+        if (compared != 0) return compared;
+      }
+      final leftNumber = left.label.number;
+      final rightNumber = right.label.number;
+      if (leftNumber != null && rightNumber != null) {
+        final compared = leftNumber.compareTo(rightNumber);
+        if (compared != 0) return compared;
+      } else if (leftNumber != null) {
+        return -1;
+      } else if (rightNumber != null) {
+        return 1;
+      }
+      // Preserve the established canonical-label tie-break for unnumbered
+      // installments. Never parse a display/provider label into a new order.
+      return left.label.rawLabel.toLowerCase().compareTo(
+        right.label.rawLabel.toLowerCase(),
+      );
+    });
+    return episodes;
+  }
+
   Future<void> saveMediaBinding(domain.MediaSourceBinding binding) =>
       transaction(() async {
         await (delete(canonicalMediaBindings)..where(
@@ -1755,6 +1790,71 @@ class CanonicalDatabase extends _$CanonicalDatabase {
   Future<void> setEpisodeUnwatched(CanonicalEpisodeId episodeId) => (delete(
     episodeCompletionRecords,
   )..where((row) => row.episodeId.equals(episodeId.value))).go();
+
+  /// Explicit canonical completion only. One atomic transaction, no playback
+  /// timestamp writes. A confirmed prefix is rejected if its scope has changed.
+  Future<List<EpisodeCompletion>> setEpisodesWatched(
+    CanonicalMediaId mediaId,
+    Iterable<CanonicalEpisodeId> episodeIds, {
+    required bool watched,
+    CanonicalEpisodeId? previousOf,
+  }) => transaction(() async {
+    final ids = episodeIds.toSet();
+    if (await media(mediaId) is! CanonicalAnime) {
+      throw StateError('Anime no longer exists.');
+    }
+    final ordered = await orderedEpisodesFor(mediaId);
+    final owned = ordered.map((episode) => episode.id).toSet();
+    if (!owned.containsAll(ids)) {
+      throw StateError(
+        'The episode list changed. Reopen Details and try again.',
+      );
+    }
+    if (previousOf != null) {
+      final index = ordered.indexWhere((episode) => episode.id == previousOf);
+      final prefix = ordered
+          .take(index < 0 ? 0 : index)
+          .map((episode) => episode.id)
+          .toSet();
+      if (index < 0 ||
+          prefix.length != ids.length ||
+          !prefix.containsAll(ids)) {
+        throw StateError(
+          'The episode list changed. Reopen Details and try again.',
+        );
+      }
+    }
+    final now = DateTime.now().toUtc();
+    final values = ids.toList();
+    await batch((batch) {
+      if (watched) {
+        batch.insertAll(episodeCompletionRecords, [
+          for (final id in values)
+            EpisodeCompletionRecordsCompanion.insert(
+              episodeId: id.value,
+              mediaId: mediaId.value,
+              completedAt: now,
+              origin: CompletionOrigin.manual.name,
+            ),
+        ], mode: InsertMode.insertOrIgnore);
+      } else {
+        // Stay below SQLite's conservative bind-variable limit.
+        for (var start = 0; start < values.length; start += 400) {
+          final chunk = values
+              .skip(start)
+              .take(400)
+              .map((id) => id.value)
+              .toList();
+          batch.deleteWhere(
+            episodeCompletionRecords,
+            (row) =>
+                row.mediaId.equals(mediaId.value) & row.episodeId.isIn(chunk),
+          );
+        }
+      }
+    });
+    return episodeCompletionsFor(mediaId);
+  });
 
   Future<List<EpisodeCompletion>> episodeCompletionsFor(
     CanonicalMediaId mediaId,
