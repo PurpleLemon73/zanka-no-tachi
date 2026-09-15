@@ -1,8 +1,122 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zanka_no_tachi/player/video_display_mode.dart';
 
 void main() {
+  test(
+    'TV Auto resolves to intrinsic Fit without migrating explicit preferences',
+    () {
+      for (final mode in [
+        VideoDisplayMode.automatic,
+        VideoDisplayMode.fromJson(null),
+        VideoDisplayMode.fromJson(VideoDisplayMode.automatic.toJson()),
+      ]) {
+        final before = mode.toJson();
+        final resolved = mode.forPresentation(isTv: true);
+        expect(resolved.fit, VideoDisplayFit.fit);
+        expect(resolved.aspectPreset, VideoAspectPreset.original);
+        expect(resolved.effectiveAspectRatio(4 / 3), 4 / 3);
+        expect(mode.toJson(), before);
+        expect(mode.forPresentation(isTv: false).isAutomatic, isTrue);
+      }
+      for (final fit in VideoDisplayFit.values.where(
+        (value) => value != VideoDisplayFit.autoOriginal,
+      )) {
+        for (final preset in VideoAspectPreset.values) {
+          final explicit = VideoDisplayMode(
+            fit: fit,
+            aspectPreset: preset,
+            customAspectRatio: preset == VideoAspectPreset.custom ? 2.39 : null,
+          );
+          final saved = VideoDisplayMode.fromJson(explicit.toJson());
+          expect(saved.forPresentation(isTv: true).toJson(), explicit.toJson());
+        }
+      }
+    },
+  );
+
+  testWidgets('TV Fit upscales a 1080p-sized child to the 4K surface', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(3840, 2160));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: VideoDisplaySurface(
+          mode: VideoDisplayMode.automatic.forPresentation(isTv: true),
+          intrinsicAspectRatio: 16 / 9,
+          child: const SizedBox(
+            key: Key('source-sized-surface'),
+            width: 1920,
+            height: 1080,
+            child: ColoredBox(color: Colors.white),
+          ),
+        ),
+      ),
+    );
+    expect(
+      tester.getSize(find.byKey(const Key('video-content-frame'))),
+      const Size(3840, 2160),
+    );
+    expect(
+      tester.getSize(find.byKey(const Key('source-sized-surface'))),
+      const Size(3840, 2160),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'letterbox, pillarbox and pending video paint black over a colored host',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(320, 180));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      for (final ratio in <double?>[4 / 3, 2.39, null]) {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: RepaintBoundary(
+              key: const Key('pixels'),
+              child: ColoredBox(
+                color: Colors.green,
+                child: VideoDisplaySurface(
+                  mode: VideoDisplayMode.automatic.forPresentation(isTv: true),
+                  intrinsicAspectRatio: ratio,
+                  child: const ColoredBox(color: Colors.white),
+                ),
+              ),
+            ),
+          ),
+        );
+        final frame = tester.getSize(
+          find.byKey(const Key('video-content-frame')),
+        );
+        if (ratio != null) expect(frame.aspectRatio, closeTo(ratio, 0.0001));
+        final boundary = tester.renderObject<RenderRepaintBoundary>(
+          find.byKey(const Key('pixels')),
+        );
+        await tester.runAsync(() async {
+          final image = await boundary.toImage();
+          final bytes = (await image.toByteData(
+            format: ui.ImageByteFormat.rawRgba,
+          ))!;
+          List<int> pixel(int x, int y) => List.generate(
+            4,
+            (channel) => bytes.getUint8((y * image.width + x) * 4 + channel),
+          );
+          expect(pixel(0, 0), [0, 0, 0, 255]);
+          expect(pixel(319, 179), [0, 0, 0, 255]);
+          expect(
+            pixel(160, 90),
+            ratio == null ? [0, 0, 0, 255] : [255, 255, 255, 255],
+          );
+          image.dispose();
+        });
+      }
+    },
+  );
+
   test('fresh and reset modes preserve the intrinsic video ratio', () {
     const mode = VideoDisplayMode();
     expect(mode.isAutomatic, isTrue);

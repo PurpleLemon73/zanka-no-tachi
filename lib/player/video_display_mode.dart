@@ -44,6 +44,13 @@ class VideoDisplayMode {
       fit == VideoDisplayFit.autoOriginal &&
       aspectPreset == VideoAspectPreset.original;
 
+  /// Resolve Auto for the current surface without rewriting device-local
+  /// preferences. Legacy/default and explicitly saved Auto are indistinguishable
+  /// but already mean proportional Fit; all explicit non-Auto modes stay intact.
+  VideoDisplayMode forPresentation({required bool isTv}) => isTv && isAutomatic
+      ? const VideoDisplayMode(fit: VideoDisplayFit.fit)
+      : this;
+
   VideoDisplayMode withFit(VideoDisplayFit value) =>
       value == VideoDisplayFit.autoOriginal
       ? automatic
@@ -211,32 +218,35 @@ class VideoDisplaySurface extends StatelessWidget {
   final Widget child;
 
   @override
-  Widget build(BuildContext context) => ClipRect(
-    child: LayoutBuilder(
-      builder: (context, constraints) {
-        final viewport = Size(
-          math.max(0, constraints.maxWidth),
-          math.max(0, constraints.maxHeight),
-        );
-        final size = videoDisplayFrameSize(
-          viewport: viewport,
-          aspectRatio: mode.effectiveAspectRatio(intrinsicAspectRatio),
-          fit: mode.fit,
-        );
-        return OverflowBox(
-          alignment: Alignment.center,
-          minWidth: 0,
-          minHeight: 0,
-          maxWidth: double.infinity,
-          maxHeight: double.infinity,
-          child: SizedBox(
-            key: const Key('video-content-frame'),
-            width: size.width,
-            height: size.height,
-            child: child,
-          ),
-        );
-      },
+  Widget build(BuildContext context) => ColoredBox(
+    color: Colors.black,
+    child: ClipRect(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final viewport = Size(
+            math.max(0, constraints.maxWidth),
+            math.max(0, constraints.maxHeight),
+          );
+          final size = videoDisplayFrameSize(
+            viewport: viewport,
+            aspectRatio: mode.effectiveAspectRatio(intrinsicAspectRatio),
+            fit: mode.fit,
+          );
+          return OverflowBox(
+            alignment: Alignment.center,
+            minWidth: 0,
+            minHeight: 0,
+            maxWidth: double.infinity,
+            maxHeight: double.infinity,
+            child: SizedBox(
+              key: const Key('video-content-frame'),
+              width: size.width,
+              height: size.height,
+              child: child,
+            ),
+          );
+        },
+      ),
     ),
   );
 }

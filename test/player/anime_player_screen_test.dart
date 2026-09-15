@@ -27,6 +27,230 @@ const _episodeTwo = CanonicalEpisodeId('player-ui-episode-2');
 const _episodeThree = CanonicalEpisodeId('player-ui-episode-3');
 
 void main() {
+  final binding = TestWidgetsFlutterBinding.ensureInitialized();
+  setUp(() {
+    // Legacy mobile scenarios begin portrait. Landscape auto-presentation is
+    // exercised explicitly below, independently of the test runner's default.
+    final view = binding.platformDispatcher.implicitView!;
+    view.devicePixelRatio = 1;
+    view.physicalSize = const Size(600, 900);
+    addTearDown(view.reset);
+  });
+
+  for (final portrait in [const Size(390, 844), const Size(800, 1100)]) {
+    testWidgets(
+      'mobile ${portrait.width.toInt()} automatic landscape and session manual override',
+      (tester) async {
+        tester.view.physicalSize = portrait;
+        final fixture = (await tester.runAsync(
+          () => _PlayerFixture.create(episodeCount: 2),
+        ))!;
+        _disposeFixtureAfterScreen(tester, fixture);
+        await tester.runAsync(
+          () => fixture.repository.savePreferences(
+            const PlaybackPreferences(autoplay: false),
+          ),
+        );
+        final calls = _recordSystemUiCalls(tester);
+        final engines = _EngineFactory();
+        await _pumpPlayer(tester, fixture, engines, _episodeOne);
+        final engine = engines.created.single;
+        expect(find.byType(AppBar), findsOneWidget);
+        expect(calls, isEmpty);
+        tester.view.physicalSize = Size(portrait.height, portrait.width);
+        await tester.pumpAndSettle();
+        expect(find.byTooltip('Exit fullscreen'), findsOneWidget);
+        expect(calls.map((value) => value.arguments), [
+          'SystemUiMode.immersiveSticky',
+          DeviceOrientation.values.map((value) => value.toString()).toList(),
+        ]);
+        calls.clear();
+        tester.view.physicalSize = portrait;
+        await tester.pumpAndSettle();
+        expect(find.byType(AppBar), findsOneWidget);
+        expect(calls.first.arguments, 'SystemUiMode.edgeToEdge');
+        tester.view.physicalSize = Size(portrait.height, portrait.width);
+        await tester.pumpAndSettle();
+        _invokeIconButton(tester, 'Exit fullscreen');
+        await tester.pumpAndSettle();
+        calls.clear();
+        await tester.pump(const Duration(seconds: 1));
+        expect(find.byType(AppBar), findsOneWidget);
+        // Rebuilds, rotations and episode replacement must not erase that choice.
+        tester.view.physicalSize = portrait;
+        await tester.pumpAndSettle();
+        tester.view.physicalSize = Size(portrait.height, portrait.width);
+        await tester.pumpAndSettle();
+        expect(find.byType(AppBar), findsOneWidget);
+        expect(calls, isEmpty);
+        expect(engines.created, [engine]);
+        expect(engine.seekPositions, isEmpty);
+        expect(await fixture.database.animeProgress(_mediaId), isNull);
+        _invokeIconButton(tester, 'Next episode');
+        await _pumpUntilReady(tester, engines, 2);
+        await tester.pumpAndSettle();
+        expect(find.byType(AppBar), findsOneWidget);
+        expect(calls, isEmpty);
+        _invokeIconButton(tester, 'Fullscreen');
+        await tester.pumpAndSettle();
+        calls.clear();
+        tester.view.physicalSize = portrait;
+        await tester.pumpAndSettle();
+        expect(find.byTooltip('Exit fullscreen'), findsOneWidget);
+        expect(calls, isEmpty, reason: 'Manual fullscreen survives portrait');
+        await tester.binding.handlePopRoute();
+        await tester.pumpAndSettle();
+        expect(find.byType(AnimePlayerScreen), findsOneWidget);
+        expect(find.byType(AppBar), findsOneWidget);
+      },
+    );
+  }
+
+  testWidgets(
+    'semantic TV automatically opens fullscreen, keeps it across episodes and honors Back',
+    (tester) async {
+      // Deliberately portrait-shaped: semantic TV identity, not geometry, wins.
+      final fixture = (await tester.runAsync(
+        () => _PlayerFixture.create(episodeCount: 3),
+      ))!;
+      _disposeFixtureAfterScreen(tester, fixture);
+      final calls = _recordSystemUiCalls(tester);
+      final engines = _EngineFactory();
+      await _pumpPlayer(tester, fixture, engines, _episodeTwo, isTv: true);
+      expect(find.byType(AppBar), findsNothing);
+      expect(_focusedTooltip(tester), 'Pause');
+      expect(
+        tester
+            .widget<VideoDisplaySurface>(find.byType(VideoDisplaySurface))
+            .mode
+            .fit,
+        VideoDisplayFit.fit,
+      );
+      expect(
+        (await tester.runAsync(
+          fixture.repository.preferencesStore.load,
+        ))!.videoDisplayMode.isAutomatic,
+        isTrue,
+      );
+      expect(calls.first.arguments, 'SystemUiMode.immersiveSticky');
+      calls.clear();
+      for (final direction in ['Next episode', 'Previous episode']) {
+        _invokeIconButton(tester, direction);
+        await _pumpUntilReady(tester, engines, engines.created.length + 1);
+        await tester.pumpAndSettle();
+        expect(find.byType(AppBar), findsNothing);
+        expect(_focusedTooltip(tester), 'Pause');
+        expect(
+          calls,
+          isEmpty,
+          reason: 'Replacement must not restore or re-enter system UI',
+        );
+      }
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.byType(AppBar), findsOneWidget);
+      expect(find.byType(AnimePlayerScreen), findsOneWidget);
+      expect(_controlsOpacity(tester), 0);
+      calls.clear();
+      tester.view.physicalSize = const Size(1280, 720);
+      await tester.pumpAndSettle();
+      expect(find.byType(AppBar), findsOneWidget);
+      expect(calls, isEmpty, reason: 'TV must honor manual fullscreen exit');
+    },
+  );
+
+  testWidgets(
+    'automatic landscape ownership transfers to Next and portrait exits only the replacement',
+    (tester) async {
+      tester.view.physicalSize = const Size(844, 390);
+      final fixture = (await tester.runAsync(
+        () => _PlayerFixture.create(episodeCount: 2),
+      ))!;
+      _disposeFixtureAfterScreen(tester, fixture);
+      final calls = _recordSystemUiCalls(tester);
+      final engines = _EngineFactory();
+      await _pumpPlayer(tester, fixture, engines, _episodeOne);
+      expect(find.byType(AppBar), findsNothing);
+      calls.clear();
+      _invokeIconButton(tester, 'Next episode');
+      await _pumpUntilReady(tester, engines, 2);
+      await tester.pumpAndSettle();
+      expect(find.byType(AppBar), findsNothing);
+      expect(calls, isEmpty);
+      tester.view.physicalSize = const Size(390, 844);
+      await tester.pumpAndSettle();
+      expect(find.byType(AppBar), findsOneWidget);
+      expect(calls.map((call) => call.arguments), [
+        'SystemUiMode.edgeToEdge',
+        DeviceOrientation.values.map((value) => value.toString()).toList(),
+      ]);
+      calls.clear();
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+      expect(
+        calls,
+        isEmpty,
+        reason: 'Automatic portrait exit is not restored twice',
+      );
+    },
+  );
+
+  testWidgets(
+    'TV manual suppression survives source replacement but not a fresh player',
+    (tester) async {
+      final fixture = (await tester.runAsync(
+        () => _PlayerFixture.create(episodeCount: 1, alternateSource: true),
+      ))!;
+      _disposeFixtureAfterScreen(tester, fixture);
+      const alternate = EpisodeSourceBinding(
+        canonicalId: _episodeOne,
+        providerId: ProviderId('alternate-original'),
+        externalId: 'alternate-1',
+        relativeLocator: '/alternate.mp4',
+      );
+      await tester.runAsync(() async {
+        final saved = await fixture.repository.open(
+          const PlaybackSessionRequest(
+            mediaId: _mediaId,
+            episodeId: _episodeOne,
+            binding: alternate,
+          ),
+        );
+        await fixture.repository.savePosition(
+          saved,
+          const Duration(seconds: 65),
+          const Duration(seconds: 100),
+        );
+        await fixture.database.setPreferredProvider(_mediaId, _providerId);
+      });
+      final calls = _recordSystemUiCalls(tester);
+      final engines = _EngineFactory();
+      await _pumpPlayer(tester, fixture, engines, _episodeOne, isTv: true);
+      _invokeIconButton(tester, 'Exit fullscreen');
+      await tester.pumpAndSettle();
+      calls.clear();
+      _invokeIconButton(tester, 'Source');
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 30)),
+      );
+      await tester.pumpAndSettle();
+      _invokeListTile(tester, 'alternate-original');
+      await _pumpUntilReady(tester, engines, 2);
+      await tester.pumpAndSettle();
+      expect(find.byType(AppBar), findsOneWidget);
+      expect(calls, isEmpty);
+      expect(engines.created.last.openedExternalIds, ['alternate-1']);
+      expect(engines.created.last.openPositions, [const Duration(seconds: 65)]);
+      expect(_focusedTooltip(tester), 'Pause');
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+      final fresh = _EngineFactory();
+      await _pumpPlayer(tester, fixture, fresh, _episodeOne, isTv: true);
+      expect(find.byType(AppBar), findsNothing);
+      expect(calls.first.arguments, 'SystemUiMode.immersiveSticky');
+    },
+  );
+
   testWidgets(
     'TV directional input skips disabled controls and an unavailable timeline',
     (tester) async {
@@ -73,7 +297,7 @@ void main() {
       }
       expect(_focusedTooltip(tester), 'Forward 10 seconds');
       await _remote(tester, LogicalKeyboardKey.arrowDown);
-      expect(_focusedTooltip(tester), 'Fullscreen');
+      expect(_focusedTooltip(tester), 'Exit fullscreen');
       await _remote(tester, LogicalKeyboardKey.arrowUp);
       expect(_focusedTooltip(tester), 'Pause');
     },
@@ -89,6 +313,10 @@ void main() {
       _recordSystemUiCalls(tester);
       final engines = _EngineFactory();
       await _pumpPlayer(tester, fixture, engines, _episodeTwo, isTv: true);
+      // Keep this regression's manual/windowed traversal scenario explicit;
+      // automatic TV entry has its own continuity assertions above.
+      _invokeIconButton(tester, 'Exit fullscreen');
+      await tester.pumpAndSettle();
       final engine = engines.created.single;
       expect(_focusedTooltip(tester), 'Pause');
       await _remote(tester, LogicalKeyboardKey.select);
@@ -242,6 +470,8 @@ void main() {
       await tester.tap(find.text('Open player'));
       await _pumpUntilReady(tester, engines, 1);
       await tester.pumpAndSettle();
+      _invokeIconButton(tester, 'Exit fullscreen');
+      await tester.pumpAndSettle();
       await _remote(tester, LogicalKeyboardKey.arrowUp);
       expect(_focusedTooltip(tester), 'Episodes');
       await _remote(tester, LogicalKeyboardKey.arrowUp);
@@ -347,6 +577,7 @@ void main() {
         () => _PlayerFixture.create(episodeCount: 2),
       ))!;
       _disposeFixtureAfterScreen(tester, fixture);
+      final calls = _recordSystemUiCalls(tester);
       await tester.runAsync(() async {
         final destination = await fixture.repository.open(
           const PlaybackSessionRequest(
@@ -362,6 +593,8 @@ void main() {
       });
       final engines = _EngineFactory();
       await _pumpPlayer(tester, fixture, engines, _episodeOne, isTv: true);
+      expect(find.byType(AppBar), findsNothing);
+      calls.clear();
       await _remote(tester, LogicalKeyboardKey.arrowUp);
       await _remote(tester, LogicalKeyboardKey.select);
       await tester.runAsync(
@@ -379,6 +612,12 @@ void main() {
       await tester.pumpAndSettle();
       expect(engines.created.last.openedExternalIds, ['episode-2']);
       expect(engines.created.last.openPositions, [const Duration(seconds: 43)]);
+      expect(find.byType(AppBar), findsNothing);
+      expect(
+        calls,
+        isEmpty,
+        reason: 'Episode picker transfers presentation ownership',
+      );
       expect(_focusedTooltip(tester), 'Pause');
     },
   );
@@ -393,8 +632,7 @@ void main() {
       final systemCalls = _recordSystemUiCalls(tester);
       final engines = _EngineFactory();
       await _pumpPlayer(tester, fixture, engines, _episodeOne, isTv: true);
-      _invokeIconButton(tester, 'Fullscreen');
-      await tester.pumpAndSettle();
+      expect(find.byTooltip('Exit fullscreen'), findsOneWidget);
       engines.created.single.complete();
       await tester.pumpAndSettle();
       expect(_buttonHasFocus(tester, 'Next Episode'), isTrue);
@@ -484,11 +722,17 @@ void main() {
         () => _PlayerFixture.create(episodeCount: 1),
       ))!;
       _disposeFixtureAfterScreen(tester, fixture);
+      _recordSystemUiCalls(tester);
       final engines = _EngineFactory();
       await _pumpPlayer(tester, fixture, engines, _episodeOne, isTv: true);
       engines.created.single.complete();
       await tester.pumpAndSettle();
       expect(find.text('End of available episodes'), findsOneWidget);
+      expect(_buttonHasFocus(tester, 'Replay'), isTrue);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.byType(AppBar), findsOneWidget);
+      expect(find.text('Episode complete'), findsOneWidget);
       expect(_buttonHasFocus(tester, 'Replay'), isTrue);
       await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
@@ -552,6 +796,12 @@ void main() {
             betterPlayerExperimentalBuilder: better.create,
           ),
         );
+        if (isTv) {
+          expect(find.byType(AppBar), findsNothing);
+          _invokeIconButton(tester, 'Exit fullscreen');
+          await tester.pumpAndSettle();
+          systemCalls.clear();
+        }
         expect(find.byType(AppBar), findsOneWidget);
         for (final (tooltip, label) in [
           ('Back 10 seconds', '-10s'),
@@ -1345,12 +1595,18 @@ class _PlayerFixture {
   final Directory directory;
   final PlaybackRepository repository;
 
-  static Future<_PlayerFixture> create({required int episodeCount}) async {
+  static Future<_PlayerFixture> create({
+    required int episodeCount,
+    bool alternateSource = false,
+  }) async {
     final directory = await Directory.systemTemp.createTemp('zanka-player-ui-');
     final database = CanonicalDatabase(NativeDatabase.memory());
     final repository = PlaybackRepository(
       database: database,
-      sources: PlaybackSourceRegistry([const _Resolver()]),
+      sources: PlaybackSourceRegistry([
+        const _Resolver(),
+        if (alternateSource) const _Resolver(ProviderId('alternate-original')),
+      ]),
       preferencesStore: PlaybackPreferencesStore(
         file: File('${directory.path}/player-preferences.json'),
       ),
@@ -1389,6 +1645,16 @@ class _PlayerFixture {
         ),
       );
     }
+    if (alternateSource) {
+      await database.saveEpisodeBinding(
+        const EpisodeSourceBinding(
+          canonicalId: _episodeOne,
+          providerId: ProviderId('alternate-original'),
+          externalId: 'alternate-1',
+          relativeLocator: '/alternate.mp4',
+        ),
+      );
+    }
     return _PlayerFixture._(
       database: database,
       directory: directory,
@@ -1403,9 +1669,9 @@ class _PlayerFixture {
 }
 
 class _Resolver implements PlaybackSourceResolver {
-  const _Resolver();
+  const _Resolver([this.providerId = _providerId]);
   @override
-  ProviderId get providerId => _providerId;
+  final ProviderId providerId;
   @override
   PlaybackSourceCapability capability(EpisodeSourceBinding binding) =>
       PlaybackSourceCapability.playbackCapable;

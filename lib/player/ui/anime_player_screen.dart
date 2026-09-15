@@ -70,16 +70,34 @@ class AnimePlayerScreen extends StatefulWidget {
 /// on the replacement route.
 class _FullscreenPresentation {
   bool fullscreen = false;
+  // Session intent travels with episode/source replacements, not with saved
+  // playback preferences. Any explicit choice wins until the player is left.
+  bool _manualOverride = false;
   Future<void> _pending = Future<void>.value();
 
-  Future<void> setFullscreen(bool value) {
+  Future<void>? updateAutomatic({
+    required bool isTv,
+    required Orientation orientation,
+  }) {
+    if (_manualOverride) return null;
+    final desired = isTv || orientation == Orientation.landscape;
+    if (desired == fullscreen) return null;
+    return setFullscreen(desired, automatic: true);
+  }
+
+  Future<void> setManualFullscreen(bool value) {
+    _manualOverride = true;
+    return setFullscreen(value);
+  }
+
+  Future<void> setFullscreen(bool value, {bool automatic = false}) {
     fullscreen = value;
     final operation = _pending.then((_) async {
       await SystemChrome.setEnabledSystemUIMode(
         value ? SystemUiMode.immersiveSticky : SystemUiMode.edgeToEdge,
       );
       await SystemChrome.setPreferredOrientations(
-        value
+        value && !automatic
             ? const [
                 DeviceOrientation.landscapeLeft,
                 DeviceOrientation.landscapeRight,
@@ -137,6 +155,19 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
     WidgetsBinding.instance.addObserver(this);
     mediaBridge.onCommand = _handleMediaCommand;
     unawaited(_open());
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_ownsPresentation) return;
+    // Only the existing semantic signal identifies TV. Orientation is used
+    // solely for automatic phone/tablet presentation, never TV detection.
+    final change = _presentation.updateAutomatic(
+      isTv: widget.isTv,
+      orientation: MediaQuery.orientationOf(context),
+    );
+    if (change != null) unawaited(change);
   }
 
   Future<void> _open({
@@ -477,7 +508,7 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
   }
 
   Future<void> _toggleFullscreen() async {
-    await _presentation.setFullscreen(!fullscreen);
+    await _presentation.setManualFullscreen(!fullscreen);
     if (mounted) setState(() {});
   }
 
@@ -631,7 +662,8 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
                       excluding: widget.isTv,
                       child: VideoDisplaySurface(
                         key: const Key('video-display-surface'),
-                        mode: session!.preferences.videoDisplayMode,
+                        mode: session!.preferences.videoDisplayMode
+                            .forPresentation(isTv: widget.isTv),
                         intrinsicAspectRatio:
                             engine!.state.value.intrinsicAspectRatio,
                         child: engine!.buildSurface(),
@@ -729,13 +761,14 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
   Future<void> _replace(EpisodeSourceBinding binding) async {
     await _flush();
     if (!mounted) return;
-    await Navigator.of(context).pushReplacement(
+    final navigation = Navigator.of(context).pushReplacement(
       MaterialPageRoute<void>(
         settings: RouteSettings(
           name:
               '/player/${session!.mediaId.value}/${session!.episode.id.value}',
         ),
-        builder: (_) => AnimePlayerScreen(
+        builder: (_) => AnimePlayerScreen._episode(
+          _presentation,
           repository: widget.repository,
           isTv: widget.isTv,
           engineRegistry: widget.engineRegistry,
@@ -747,6 +780,8 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
         ),
       ),
     );
+    _ownsPresentation = false;
+    await navigation;
   }
 
   Future<void> _showSources() async {
@@ -852,9 +887,10 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
     if (chosen != null && chosen.episode.id != session!.episode.id && mounted) {
       await _flush();
       if (!mounted) return;
-      await Navigator.of(context).pushReplacement(
+      final navigation = Navigator.of(context).pushReplacement(
         MaterialPageRoute<void>(
-          builder: (_) => AnimePlayerScreen(
+          builder: (_) => AnimePlayerScreen._episode(
+            _presentation,
             repository: widget.repository,
             isTv: widget.isTv,
             engineRegistry: widget.engineRegistry,
@@ -865,6 +901,8 @@ class _AnimePlayerScreenState extends State<AnimePlayerScreen>
           ),
         ),
       );
+      _ownsPresentation = false;
+      await navigation;
     }
   }
 
