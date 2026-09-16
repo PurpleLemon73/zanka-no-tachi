@@ -121,6 +121,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               width: double.infinity,
               child: FilledButton(
                 key: const Key('onboarding-next'),
+                autofocus: true,
                 onPressed: page == pages.length - 1
                     ? _finish
                     : () => controller.nextPage(

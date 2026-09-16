@@ -60,6 +60,13 @@ void main() {
       tv: false,
     ),
     (
+      name: 'phone-landscape',
+      size: const Size(844, 390),
+      scale: 1.5,
+      dpr: 1.0,
+      tv: false,
+    ),
+    (
       name: 'tablet-portrait',
       size: const Size(800, 1100),
       scale: 1.5,

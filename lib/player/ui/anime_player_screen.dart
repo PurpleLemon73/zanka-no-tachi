@@ -1507,7 +1507,13 @@ class _SeekGlyph extends StatelessWidget {
   Widget build(BuildContext context) => Column(
     mainAxisSize: MainAxisSize.min,
     children: [
-      Icon(forward ? Icons.forward_rounded : Icons.replay_rounded, size: 20),
+      // Let the decorative icon yield space to the fully scaled seek label.
+      Flexible(
+        child: Icon(
+          forward ? Icons.forward_rounded : Icons.replay_rounded,
+          size: 20,
+        ),
+      ),
       Text(
         '${forward ? '+' : '-'}${step}s',
         style: const TextStyle(

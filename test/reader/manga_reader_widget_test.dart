@@ -17,6 +17,57 @@ import 'package:zanka_no_tachi/reader/sample_manga_installer.dart';
 import 'package:zanka_no_tachi/reader/ui/manga_reader_screen.dart';
 
 void main() {
+  for (final size in [
+    const Size(320, 740),
+    const Size(844, 390),
+    const Size(1280, 800),
+  ]) {
+    testWidgets(
+      'responsive reader surfaces ${size.width} keep settings and chapter picker reachable',
+      (tester) async {
+        tester.view.devicePixelRatio = 1;
+        tester.view.physicalSize = size;
+        addTearDown(tester.view.reset);
+        final fixture = (await tester.runAsync(_ReaderWidgetFixture.create))!;
+        _disposeReaderFixtureAfterScreen(tester, fixture);
+        final session = (await tester.runAsync(
+          () => fixture.repository.open(
+            const ReaderSessionRequest(
+              mediaId: sampleMangaId,
+              chapterId: sampleChapterOneId,
+            ),
+          ),
+        ))!;
+        await _pumpReader(tester, fixture, session, scale: 1.5);
+        expect(
+          find.byKey(const Key('reader-settings')).hitTestable(),
+          findsOneWidget,
+        );
+        await tester.tap(find.byKey(const Key('reader-settings')));
+        await _settleReaderIo(tester);
+        final apply = find.byKey(const Key('save-reader-settings'));
+        await tester.ensureVisible(apply);
+        await tester.pumpAndSettle();
+        expect(apply.hitTestable(), findsOneWidget);
+        await tester.tap(apply);
+        await _settleReaderIo(tester);
+        await tester.tap(find.byKey(const Key('chapter-picker')));
+        await _settleReaderIo(tester);
+        expect(
+          find.byKey(const Key('chapter-picker-list')).hitTestable(),
+          findsOneWidget,
+        );
+        expect(tester.takeException(), isNull);
+        await tester.binding.handlePopRoute();
+        await _settleReaderIo(tester);
+        expect(
+          find.byKey(const Key('reader-settings')).hitTestable(),
+          findsOneWidget,
+        );
+      },
+    );
+  }
+
   testWidgets(
     'reader pages, persists, switches modes and never maps position to another scan',
     (tester) async {
@@ -490,9 +541,16 @@ Future<void> _pumpReader(
   _ReaderWidgetFixture fixture,
   ReaderSession session, {
   int attempts = 12,
+  double scale = 1,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(
+          context,
+        ).copyWith(textScaler: TextScaler.linear(scale)),
+        child: child!,
+      ),
       home: MangaReaderScreen(
         repository: fixture.repository,
         initialSession: session,

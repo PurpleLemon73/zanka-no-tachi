@@ -114,10 +114,8 @@ class _LocalMediaScreenState extends State<LocalMediaScreen> {
     CanonicalMediaKind kind,
     String path,
   ) async {
-    final title = TextEditingController(text: _nameWithoutExtension(path));
-    final label = TextEditingController(
-      text: kind == CanonicalMediaKind.manga ? 'Chapter 1' : 'Episode 1',
-    );
+    var title = _nameWithoutExtension(path);
+    var label = kind == CanonicalMediaKind.manga ? 'Chapter 1' : 'Episode 1';
     CanonicalMediaId? attachment;
     final candidates = widget.controller.persisted
         .where((item) => item.media.kind == kind)
@@ -133,12 +131,14 @@ class _LocalMediaScreenState extends State<LocalMediaScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                TextField(
-                  controller: title,
+                TextFormField(
+                  initialValue: title,
+                  onChanged: (value) => title = value,
                   decoration: const InputDecoration(labelText: 'Title'),
                 ),
-                TextField(
-                  controller: label,
+                TextFormField(
+                  initialValue: label,
+                  onChanged: (value) => label = value,
                   decoration: InputDecoration(
                     labelText: kind == CanonicalMediaKind.manga
                         ? 'Chapter label'
@@ -147,6 +147,8 @@ class _LocalMediaScreenState extends State<LocalMediaScreen> {
                 ),
                 DropdownButtonFormField<CanonicalMediaId?>(
                   initialValue: attachment,
+                  isExpanded: true,
+                  itemHeight: null,
                   decoration: const InputDecoration(
                     labelText: 'Attach to existing (reviewed)',
                   ),
@@ -181,8 +183,8 @@ class _LocalMediaScreenState extends State<LocalMediaScreen> {
               onPressed: () => Navigator.pop(
                 context,
                 _ImportMetadata(
-                  title: title.text.trim(),
-                  label: label.text.trim(),
+                  title: title.trim(),
+                  label: label.trim(),
                   attachment: attachment,
                 ),
               ),
@@ -192,8 +194,6 @@ class _LocalMediaScreenState extends State<LocalMediaScreen> {
         ),
       ),
     );
-    title.dispose();
-    label.dispose();
     return result;
   }
 
@@ -268,9 +268,7 @@ class _LocalMediaScreenState extends State<LocalMediaScreen> {
     );
     var items = await batch.preview(paths);
     if (!mounted) return;
-    final title = TextEditingController(
-      text: _nameWithoutExtension(paths.first),
-    );
+    var title = _nameWithoutExtension(paths.first);
     CanonicalMediaId? attachment;
     final candidates = widget.controller.persisted
         .where((value) => value.media.kind == kind)
@@ -284,20 +282,24 @@ class _LocalMediaScreenState extends State<LocalMediaScreen> {
                 ? 'Review chapter batch'
                 : 'Review episode batch',
           ),
+          scrollable: true,
           content: SizedBox(
             width: 520,
             child: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  TextField(
-                    controller: title,
+                  TextFormField(
+                    initialValue: title,
+                    onChanged: (value) => title = value,
                     decoration: const InputDecoration(
                       labelText: 'Reviewed canonical title',
                     ),
                   ),
                   DropdownButtonFormField<CanonicalMediaId?>(
                     initialValue: attachment,
+                    isExpanded: true,
+                    itemHeight: null,
                     decoration: const InputDecoration(
                       labelText: 'Attach to existing (reviewed)',
                     ),
@@ -360,16 +362,16 @@ class _LocalMediaScreenState extends State<LocalMediaScreen> {
         ),
       ),
     );
-    if (accepted == true && title.text.trim().isNotEmpty) {
+    if (accepted == true && title.trim().isNotEmpty) {
       await _run(() async {
         final mediaId = kind == CanonicalMediaKind.manga
             ? await batch.importManga(
-                reviewedTitle: title.text,
+                reviewedTitle: title,
                 items: items,
                 attachTo: attachment,
               )
             : await batch.importVideos(
-                reviewedTitle: title.text,
+                reviewedTitle: title,
                 items: items,
                 attachTo: attachment,
               );
@@ -387,7 +389,6 @@ class _LocalMediaScreenState extends State<LocalMediaScreen> {
         }
       });
     }
-    title.dispose();
   }
 
   Future<void> _repair(LocalAsset asset) async {
@@ -452,6 +453,7 @@ class _LocalMediaScreenState extends State<LocalMediaScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Confirm attachment change'),
+        scrollable: true,
         content: const Text(
           'The local file source will move to the reviewed installment. This can be changed again later.',
         ),
@@ -477,6 +479,7 @@ class _LocalMediaScreenState extends State<LocalMediaScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Remove local source?'),
+        scrollable: true,
         content: const Text(
           'Library state, canonical metadata, and progress remain. Choose whether to also delete Zanka’s app-owned file.',
         ),
@@ -509,6 +512,7 @@ class _LocalMediaScreenState extends State<LocalMediaScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: Text('Remove ${targets.length} local sources?'),
+        scrollable: true,
         content: const Text(
           'The app-owned files will be kept. Library entries, media metadata, and progress are unchanged.',
         ),
@@ -570,6 +574,7 @@ class _LocalMediaScreenState extends State<LocalMediaScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Restore data non-destructively?'),
+        scrollable: true,
         content: Text(
           '${preview.mediaCount} media · ${preview.libraryCount} library records · ${preview.localAssetCount} excluded local assets. Current data will be kept and merged.',
         ),
@@ -619,214 +624,228 @@ class _LocalMediaScreenState extends State<LocalMediaScreen> {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('Local media')),
-    body: ListView(
-      padding: const EdgeInsets.all(ZankaSpace.md),
-      children: [
-        if (busy) const LinearProgressIndicator(),
-        Text('Import', style: Theme.of(context).textTheme.titleLarge),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            FilledButton.icon(
-              onPressed: busy ? null : _importManga,
-              icon: const Icon(Icons.book),
-              label: const Text('Import CBZ'),
-            ),
-            OutlinedButton.icon(
-              onPressed: busy ? null : () => _importManga(folder: true),
-              icon: const Icon(Icons.folder),
-              label: const Text('Import image folder'),
-            ),
-            FilledButton.icon(
-              onPressed: busy ? null : _importVideo,
-              icon: const Icon(Icons.movie),
-              label: const Text('Import video'),
-            ),
-            OutlinedButton.icon(
-              key: const Key('batch-import-cbz'),
-              onPressed: busy
-                  ? null
-                  : () => _batchImport(CanonicalMediaKind.manga),
-              icon: const Icon(Icons.library_books_outlined),
-              label: const Text('Batch CBZ'),
-            ),
-            OutlinedButton.icon(
-              key: const Key('batch-import-video'),
-              onPressed: busy
-                  ? null
-                  : () => _batchImport(CanonicalMediaKind.anime),
-              icon: const Icon(Icons.video_library_outlined),
-              label: const Text('Batch video'),
-            ),
-          ],
-        ),
-        const ZankaSectionTitle('Backup and portability'),
-        ListTile(
-          leading: const Icon(Icons.backup_outlined),
-          title: const Text('Create data-only backup'),
-          subtitle: const Text(
-            'Portable canonical state and preferences; local media files excluded.',
-          ),
-          onTap: busy ? null : _backup,
-        ),
-        ListTile(
-          leading: const Icon(Icons.restore),
-          title: const Text('Restore backup'),
-          subtitle: const Text(
-            'Validates and merges without deleting current data.',
-          ),
-          onTap: busy ? null : _restore,
-        ),
-        const ZankaSectionTitle('Tracked storage'),
-        Text(
-          '${summary?.assetCount ?? 0} assets · ${summary?.missingCount ?? 0} missing',
-        ),
-        Text(
-          'Manga ${_bytes(summary?.mangaBytes ?? 0)} · Video ${_bytes(summary?.videoBytes ?? 0)}',
-        ),
-        const ZankaSectionTitle('Your files'),
-        TextField(
-          key: const Key('local-media-search'),
-          decoration: const InputDecoration(
-            prefixIcon: Icon(Icons.search),
-            labelText: 'Search local media',
-          ),
-          onChanged: (value) => setState(() => query = value.trim()),
-        ),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          children: [
-            DropdownButton<_AssetFilter>(
-              value: filter,
-              items: _AssetFilter.values
-                  .map(
-                    (value) => DropdownMenuItem(
-                      value: value,
-                      child: Text(switch (value) {
-                        _AssetFilter.all => 'All files',
-                        _AssetFilter.manga => 'Manga',
-                        _AssetFilter.video => 'Videos',
-                        _AssetFilter.missing => 'Needs repair',
-                        _AssetFilter.available => 'Available',
-                      }),
-                    ),
-                  )
-                  .toList(),
-              onChanged: (value) => setState(() => filter = value!),
-            ),
-            DropdownButton<_AssetSort>(
-              value: sort,
-              items: _AssetSort.values
-                  .map(
-                    (value) => DropdownMenuItem(
-                      value: value,
-                      child: Text('Sort: ${value.name}'),
-                    ),
-                  )
-                  .toList(),
-              onChanged: (value) => setState(() => sort = value!),
-            ),
-          ],
-        ),
-        if (selected.isNotEmpty)
-          ListTile(
-            title: Text('${selected.length} selected'),
-            trailing: Wrap(
-              children: [
-                TextButton(
-                  onPressed: () => setState(selected.clear),
-                  child: const Text('Clear'),
-                ),
-                TextButton(
-                  onPressed: busy ? null : _removeSelected,
-                  child: const Text('Remove sources…'),
-                ),
-              ],
-            ),
-          ),
-        if (visibleAssets.isEmpty)
-          const Padding(
-            padding: EdgeInsets.all(24),
-            child: Text('No local media matches these filters.'),
-          ),
-        for (final asset in visibleAssets)
-          Card(
-            child: ListTile(
-              selected: selected.contains(asset.id),
-              onLongPress: () => setState(() => selected.add(asset.id)),
-              onTap: selected.isNotEmpty
-                  ? () => setState(
-                      () => selected.contains(asset.id)
-                          ? selected.remove(asset.id)
-                          : selected.add(asset.id),
-                    )
-                  : () async {
-                      await Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (_) => MediaDetailsScreen(
-                            controller: widget.controller,
-                            mediaId: asset.mediaId,
-                          ),
-                        ),
-                      );
-                      await _reload();
-                    },
-              title: Text(asset.originalName),
-              subtitle: Text(
-                '${asset.kind == LocalAssetKind.video ? 'Video' : 'Manga'} · '
-                '${asset.state == LocalAssetState.available ? 'Available' : 'Needs repair'} · '
-                '${_bytes(asset.sizeBytes ?? 0)}',
-              ),
-              leading: Icon(
-                asset.state == LocalAssetState.available
-                    ? Icons.check_circle_outline
-                    : Icons.link_off,
-              ),
-              trailing: PopupMenuButton<String>(
-                onSelected: (value) {
-                  if (value == 'repair') _repair(asset);
-                  if (value == 'attach') _reattach(asset);
-                  if (value == 'remove') _remove(asset);
-                },
-                itemBuilder: (_) => const [
-                  PopupMenuItem(
-                    value: 'attach',
-                    child: Text('Attach to another installment…'),
+    body: SafeArea(
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 980),
+          child: ListView(
+            padding: const EdgeInsets.all(ZankaSpace.md),
+            children: [
+              if (busy) const LinearProgressIndicator(),
+              Text('Import', style: Theme.of(context).textTheme.titleLarge),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  FilledButton.icon(
+                    onPressed: busy ? null : _importManga,
+                    icon: const Icon(Icons.book),
+                    label: const Text('Import CBZ'),
                   ),
-                  PopupMenuItem(
-                    value: 'repair',
-                    child: Text('Repair / replace'),
+                  OutlinedButton.icon(
+                    onPressed: busy ? null : () => _importManga(folder: true),
+                    icon: const Icon(Icons.folder),
+                    label: const Text('Import image folder'),
                   ),
-                  PopupMenuItem(
-                    value: 'remove',
-                    child: Text('Remove local source…'),
+                  FilledButton.icon(
+                    onPressed: busy ? null : _importVideo,
+                    icon: const Icon(Icons.movie),
+                    label: const Text('Import video'),
+                  ),
+                  OutlinedButton.icon(
+                    key: const Key('batch-import-cbz'),
+                    onPressed: busy
+                        ? null
+                        : () => _batchImport(CanonicalMediaKind.manga),
+                    icon: const Icon(Icons.library_books_outlined),
+                    label: const Text('Batch CBZ'),
+                  ),
+                  OutlinedButton.icon(
+                    key: const Key('batch-import-video'),
+                    onPressed: busy
+                        ? null
+                        : () => _batchImport(CanonicalMediaKind.anime),
+                    icon: const Icon(Icons.video_library_outlined),
+                    label: const Text('Batch video'),
                   ),
                 ],
               ),
-            ),
+              const ZankaSectionTitle('Backup and portability'),
+              ListTile(
+                leading: const Icon(Icons.backup_outlined),
+                title: const Text('Create data-only backup'),
+                subtitle: const Text(
+                  'Portable canonical state and preferences; local media files excluded.',
+                ),
+                onTap: busy ? null : _backup,
+              ),
+              ListTile(
+                leading: const Icon(Icons.restore),
+                title: const Text('Restore backup'),
+                subtitle: const Text(
+                  'Validates and merges without deleting current data.',
+                ),
+                onTap: busy ? null : _restore,
+              ),
+              const ZankaSectionTitle('Tracked storage'),
+              Text(
+                '${summary?.assetCount ?? 0} assets · ${summary?.missingCount ?? 0} missing',
+              ),
+              Text(
+                'Manga ${_bytes(summary?.mangaBytes ?? 0)} · Video ${_bytes(summary?.videoBytes ?? 0)}',
+              ),
+              const ZankaSectionTitle('Your files'),
+              TextField(
+                key: const Key('local-media-search'),
+                decoration: const InputDecoration(
+                  prefixIcon: Icon(Icons.search),
+                  labelText: 'Search local media',
+                ),
+                onChanged: (value) => setState(() => query = value.trim()),
+              ),
+              const SizedBox(height: 8),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  DropdownButton<_AssetFilter>(
+                    isExpanded: true,
+                    itemHeight: null,
+                    value: filter,
+                    items: _AssetFilter.values
+                        .map(
+                          (value) => DropdownMenuItem(
+                            value: value,
+                            child: Text(switch (value) {
+                              _AssetFilter.all => 'All files',
+                              _AssetFilter.manga => 'Manga',
+                              _AssetFilter.video => 'Videos',
+                              _AssetFilter.missing => 'Needs repair',
+                              _AssetFilter.available => 'Available',
+                            }),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) => setState(() => filter = value!),
+                  ),
+                  DropdownButton<_AssetSort>(
+                    isExpanded: true,
+                    itemHeight: null,
+                    value: sort,
+                    items: _AssetSort.values
+                        .map(
+                          (value) => DropdownMenuItem(
+                            value: value,
+                            child: Text('Sort: ${value.name}'),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) => setState(() => sort = value!),
+                  ),
+                ],
+              ),
+              if (selected.isNotEmpty)
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('${selected.length} selected'),
+                    Wrap(
+                      children: [
+                        TextButton(
+                          onPressed: () => setState(selected.clear),
+                          child: const Text('Clear'),
+                        ),
+                        TextButton(
+                          onPressed: busy ? null : _removeSelected,
+                          child: const Text('Remove sources…'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              if (visibleAssets.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Text('No local media matches these filters.'),
+                ),
+              for (final asset in visibleAssets)
+                Card(
+                  child: ListTile(
+                    selected: selected.contains(asset.id),
+                    onLongPress: () => setState(() => selected.add(asset.id)),
+                    onTap: selected.isNotEmpty
+                        ? () => setState(
+                            () => selected.contains(asset.id)
+                                ? selected.remove(asset.id)
+                                : selected.add(asset.id),
+                          )
+                        : () async {
+                            await Navigator.of(context).push(
+                              MaterialPageRoute<void>(
+                                builder: (_) => MediaDetailsScreen(
+                                  controller: widget.controller,
+                                  mediaId: asset.mediaId,
+                                ),
+                              ),
+                            );
+                            await _reload();
+                          },
+                    title: Text(asset.originalName),
+                    subtitle: Text(
+                      '${asset.kind == LocalAssetKind.video ? 'Video' : 'Manga'} · '
+                      '${asset.state == LocalAssetState.available ? 'Available' : 'Needs repair'} · '
+                      '${_bytes(asset.sizeBytes ?? 0)}',
+                    ),
+                    leading: Icon(
+                      asset.state == LocalAssetState.available
+                          ? Icons.check_circle_outline
+                          : Icons.link_off,
+                    ),
+                    trailing: PopupMenuButton<String>(
+                      onSelected: (value) {
+                        if (value == 'repair') _repair(asset);
+                        if (value == 'attach') _reattach(asset);
+                        if (value == 'remove') _remove(asset);
+                      },
+                      itemBuilder: (_) => const [
+                        PopupMenuItem(
+                          value: 'attach',
+                          child: Text('Attach to another installment…'),
+                        ),
+                        PopupMenuItem(
+                          value: 'repair',
+                          child: Text('Repair / replace'),
+                        ),
+                        PopupMenuItem(
+                          value: 'remove',
+                          child: Text('Remove local source…'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              const ZankaSectionTitle('Maintenance'),
+              ListTile(
+                key: const Key('scan-missing-assets'),
+                leading: const Icon(Icons.find_in_page_outlined),
+                title: const Text('Scan for missing local media'),
+                subtitle: const Text(
+                  'Checks tracked files without deleting Library state or progress.',
+                ),
+                onTap: busy ? null : () => _run(() async {}),
+              ),
+              ListTile(
+                key: const Key('clear-regenerable-data'),
+                leading: const Icon(Icons.cleaning_services_outlined),
+                title: const Text('Clear thumbnails and temporary files'),
+                subtitle: const Text(
+                  'Only regenerable cache and orphan preparation files are removed.',
+                ),
+                onTap: busy ? null : _cleanup,
+              ),
+            ],
           ),
-        const ZankaSectionTitle('Maintenance'),
-        ListTile(
-          key: const Key('scan-missing-assets'),
-          leading: const Icon(Icons.find_in_page_outlined),
-          title: const Text('Scan for missing local media'),
-          subtitle: const Text(
-            'Checks tracked files without deleting Library state or progress.',
-          ),
-          onTap: busy ? null : () => _run(() async {}),
         ),
-        ListTile(
-          key: const Key('clear-regenerable-data'),
-          leading: const Icon(Icons.cleaning_services_outlined),
-          title: const Text('Clear thumbnails and temporary files'),
-          subtitle: const Text(
-            'Only regenerable cache and orphan preparation files are removed.',
-          ),
-          onTap: busy ? null : _cleanup,
-        ),
-      ],
+      ),
     ),
   );
 }

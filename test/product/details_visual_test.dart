@@ -30,6 +30,8 @@ void main() {
     (size: const Size(360, 780), brightness: Brightness.dark),
     (size: const Size(360, 780), brightness: Brightness.light),
     (size: const Size(1100, 800), brightness: Brightness.light),
+    (size: const Size(844, 390), brightness: Brightness.dark),
+    (size: const Size(800, 1100), brightness: Brightness.dark),
   ]) {
     testWidgets(
       'Details ${layout.size.width.toInt()} remains usable in ${layout.brightness.name} with large text',

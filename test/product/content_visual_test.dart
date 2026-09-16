@@ -46,6 +46,13 @@ void main() {
     (name: 'narrow', size: const Size(320, 720), scale: 2.0, tv: false),
     (name: 'phone', size: const Size(390, 844), scale: 1.0, tv: false),
     (
+      name: 'phone-landscape',
+      size: const Size(844, 390),
+      scale: 1.5,
+      tv: false,
+    ),
+    (name: 'large-phone', size: const Size(480, 960), scale: 1.3, tv: false),
+    (
       name: 'portrait-tablet',
       size: const Size(800, 1100),
       scale: 1.5,
@@ -54,6 +61,12 @@ void main() {
     (name: 'wide-tablet', size: const Size(1280, 800), scale: 1.0, tv: false),
     (name: 'compact-tv', size: const Size(960, 540), scale: 1.3, tv: true),
     (name: 'tv', size: const Size(1280, 720), scale: 1.0, tv: true),
+    (
+      name: 'tv-1080-large-text',
+      size: const Size(1920, 1080),
+      scale: 1.5,
+      tv: true,
+    ),
   ]) {
     testWidgets('${layout.name} content layouts tolerate titles and text scale', (
       tester,

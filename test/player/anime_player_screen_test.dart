@@ -37,6 +37,80 @@ void main() {
     addTearDown(view.reset);
   });
 
+  for (final layout in [
+    (size: const Size(320, 740), tv: false),
+    (size: const Size(844, 390), tv: false),
+    (size: const Size(1280, 720), tv: true),
+  ]) {
+    testWidgets(
+      'responsive player surfaces ${layout.size.width} tv=${layout.tv} preserve geometry and sheet access',
+      (tester) async {
+        tester.view.physicalSize = layout.size;
+        final fixture = (await tester.runAsync(
+          () => _PlayerFixture.create(episodeCount: 2),
+        ))!;
+        _disposeFixtureAfterScreen(tester, fixture);
+        final engines = _EngineFactory();
+        await _pumpPlayer(
+          tester,
+          fixture,
+          engines,
+          _episodeOne,
+          isTv: layout.tv,
+          scale: 1.5,
+        );
+        final initialEngine = engines.created.single;
+        for (final tooltip in ['Display mode', 'Episodes']) {
+          final button = _iconButtonForTooltip(tooltip);
+          await tester.ensureVisible(button);
+          await tester.pump();
+          expect(button.hitTestable(), findsOneWidget);
+          await tester.tap(button);
+          // Let the surface's double-tap recognizer resolve this single tap.
+          await tester.pump(const Duration(milliseconds: 350));
+          await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 40)),
+          );
+          await tester.pumpAndSettle();
+          if (tooltip == 'Display mode') {
+            final reset = find.byKey(const Key('reset-video-display-mode'));
+            await tester.scrollUntilVisible(
+              reset,
+              120,
+              scrollable: find
+                  .descendant(
+                    of: find.byType(BottomSheet),
+                    matching: find.byType(Scrollable),
+                  )
+                  .last,
+            );
+            await tester.pumpAndSettle();
+            expect(reset.hitTestable(), findsOneWidget);
+            await tester.tap(reset);
+            await tester.pump();
+          } else {
+            await tester.scrollUntilVisible(
+              find.text('Episode 2'),
+              100,
+              scrollable: find
+                  .descendant(
+                    of: find.byType(BottomSheet),
+                    matching: find.byType(Scrollable),
+                  )
+                  .last,
+            );
+            expect(find.text('Episode 2'), findsOneWidget);
+          }
+          expect(tester.takeException(), isNull);
+          await tester.binding.handlePopRoute();
+          await tester.pumpAndSettle();
+          expect(engines.created, [initialEngine]);
+        }
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   for (final portrait in [const Size(390, 844), const Size(800, 1100)]) {
     testWidgets(
       'mobile ${portrait.width.toInt()} automatic landscape and session manual override',
@@ -1531,9 +1605,16 @@ Future<void> _pumpPlayer(
   CanonicalEpisodeId episodeId, {
   bool isTv = false,
   PlaybackEngineRegistry? engineRegistry,
+  double scale = 1,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(
+          context,
+        ).copyWith(textScaler: TextScaler.linear(scale)),
+        child: child!,
+      ),
       home: AnimePlayerScreen(
         repository: fixture.repository,
         isTv: isTv,
