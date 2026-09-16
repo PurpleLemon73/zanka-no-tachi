@@ -2,7 +2,7 @@
 
 ## Prepare
 
-Use Flutter 3.47.2's supported Android stack: JDK 17–25, Gradle 9.3.1, AGP
+Use Flutter 3.47.2's supported Android stack: JDK 21–25, Gradle 9.3.1, AGP
 9.1.0 and Kotlin 2.4.0. A JRE without `jlink` is insufficient.
 
 1. Use a clean checkout and verify no database, backup, imported media, local
@@ -15,7 +15,10 @@ Use Flutter 3.47.2's supported Android stack: JDK 17–25, Gradle 9.3.1, AGP
    workflow material, copyrighted validation media, local paths/databases, and
    unintended large binaries before changing repository visibility.
 
-Debug APKs are testing artifacts only: `flutter build apk --debug`.
+Debug APKs are testing artifacts only:
+`flutter build apk --debug --flavor development`. The signed production variant
+is `flutter build apk --release --flavor production`. See
+[Build profiles](../features/BUILD_PROFILES.md) for identities and exclusions.
 
 ## Signed Android release
 

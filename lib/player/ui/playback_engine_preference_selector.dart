@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../app/build_profile.dart';
 
 import '../playback_domain.dart';
 import '../playback_engine_preference.dart';
@@ -42,7 +43,7 @@ class _PlaybackEnginePreferenceSelectorState
   @override
   void initState() {
     super.initState();
-    unawaited(_load());
+    if (BuildProfile.current.allowsExperimentalEngines) unawaited(_load());
   }
 
   Future<void> _load() async {
@@ -97,6 +98,9 @@ class _PlaybackEnginePreferenceSelectorState
 
   @override
   Widget build(BuildContext context) {
+    if (!BuildProfile.current.allowsExperimentalEngines) {
+      return const SizedBox.shrink();
+    }
     final preferences = _preferences;
     if (preferences == null) {
       return const Card(

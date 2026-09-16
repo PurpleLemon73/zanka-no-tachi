@@ -13,10 +13,13 @@ catalog/search/detail metadata. Those providers and the network operator may
 observe ordinary request information such as IP address. Zanka does not send
 Library state, progress, imported media, backups or diagnostics to them.
 
-Diagnostics are local, bounded and redacted. Sensitive URLs/query values,
+Development-build diagnostics are local, bounded and redacted. Sensitive URLs/query values,
 credentials and absolute paths are not intentionally retained. Debug logs are
 suppressed in release mode. A report leaves the device only if the user copies
-and shares it.
+and shares it. Production does not enable the app-owned diagnostic recorder,
+diagnostic export UI, or experimental engine controls. Existing diagnostic files
+are not deleted during an update. Platform/runtime error reporting is separate
+from this app-owned recorder; no telemetry service is added.
 
 User-created backups contain app data but no imported media bytes or absolute
 local paths. Treat them as private: titles, Library state and progress are

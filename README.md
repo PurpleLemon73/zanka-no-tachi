@@ -72,7 +72,8 @@ install an APK whose checksum or signer differs unexpectedly.
 Home surfaces your canonical library and Smart Resume actions. Search is
 bounded and user-driven. Details combines every source for one title, while
 Reader/Player choose only bindings that can actually provide media. Settings
-contains local imports, backups, appearance, maintenance, and diagnostics.
+contains local imports, backups, appearance, and maintenance. Diagnostic and
+experimental tools are available only in development builds.
 
 ## TV and remote
 
@@ -137,22 +138,27 @@ prompt/process archive.
 
 ## Build from source
 
-Use Flutter 3.47.2 stable with Dart 3.13, a full JDK 17–25, and an Android SDK:
+Use the Flutter version pinned in CI, a compatible full JDK 21 or newer, and
+the existing Android SDK. The development plugin requires JDK 21+:
 
 ```bash
 flutter pub get
 dart format --output=none --set-exit-if-changed .
 flutter analyze
-flutter test
-flutter build apk --debug
+flutter test --flavor development
+flutter test --flavor production test/app/build_profile_test.dart
+flutter build apk --debug --flavor development
 ```
 
-Run with `flutter run`. Release signing is maintainer-owned and intentionally
-has no debug-key fallback; see [Releasing](docs/release/RELEASING.md).
+Run with `flutter run --flavor development`. For the clean production product,
+use `flutter build apk --release --flavor production`; signing is maintainer-owned
+and has no debug-key fallback. See [Build profiles](docs/features/BUILD_PROFILES.md)
+and [Releasing](docs/release/RELEASING.md).
 
 ## Privacy, independence, and contributing
 
-Diagnostics are local, bounded, and redacted. Zanka has no project-operated
+Development diagnostics are local, bounded, and redacted; production exposes no
+diagnostic UI or app-owned diagnostic recorder. Zanka has no project-operated
 account or analytics service. Read [PRIVACY.md](PRIVACY.md) for exact behavior.
 
 Zanka no Tachi is an independent, unofficial open-source project. It is not

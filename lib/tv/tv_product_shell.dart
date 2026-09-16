@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../app/app_preferences.dart';
+import '../app/build_profile.dart';
 import '../canonical/domain/identifiers.dart';
 import '../canonical/domain/media.dart';
 import '../product/product_controller.dart';
@@ -8,6 +9,7 @@ import '../product/product_models.dart';
 import '../product/ui/design_system.dart';
 import '../product/ui/content_visuals.dart';
 import '../product/ui/settings_visuals.dart';
+import '../product/ui/source_settings_page.dart';
 import '../product/ui/product_navigation.dart';
 import 'tv_design_system.dart';
 import 'tv_media_details_screen.dart';
@@ -49,6 +51,7 @@ class TvProductShell extends StatelessWidget {
                 1 => TvSearchScreen(controller: controller),
                 2 => TvLibraryScreen(controller: controller),
                 _ => TvSettingsScreen(
+                  controller: controller,
                   developerBuilder: developerBuilder,
                   aboutBuilder: aboutBuilder,
                   appearance: appearance,
@@ -611,11 +614,13 @@ class _TvLibraryScreenState extends State<TvLibraryScreen> {
 class TvSettingsScreen extends StatelessWidget {
   const TvSettingsScreen({
     super.key,
+    this.controller,
     required this.developerBuilder,
     required this.aboutBuilder,
     required this.appearance,
     required this.onAppearanceChanged,
   });
+  final ProductController? controller;
   final WidgetBuilder developerBuilder;
   final WidgetBuilder aboutBuilder;
   final AppPreferences appearance;
@@ -652,28 +657,47 @@ class TvSettingsScreen extends StatelessWidget {
           ),
         ),
       ),
+      if (controller != null) ...[
+        const SizedBox(height: 24),
+        SettingsCategoryPanel(
+          key: const Key('settings-sources'),
+          title: 'Sources',
+          description: 'Discovery and source addresses.',
+          icon: Icons.travel_explore_rounded,
+          tv: true,
+          onPressed: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => SourceSettingsPage(controller: controller!),
+            ),
+          ),
+        ),
+      ],
       const SizedBox(height: 24),
       SettingsAction(
         key: const Key('open-about'),
         title: 'About Zanka',
-        description: 'Help, privacy, licenses and local diagnostics.',
+        description: BuildProfile.current.allowsLocalDiagnostics
+            ? 'Help, privacy, licenses and local diagnostics.'
+            : 'Help, privacy and licenses.',
         icon: Icons.info_outline_rounded,
         tv: true,
         onPressed: () => Navigator.of(
           context,
         ).push(MaterialPageRoute<void>(builder: aboutBuilder)),
       ),
-      const SizedBox(height: 14),
-      SettingsAction(
-        key: const Key('open-developer-tools'),
-        title: 'Developer',
-        description: 'Advanced controls and source diagnostics.',
-        icon: Icons.developer_mode_rounded,
-        tv: true,
-        onPressed: () => Navigator.of(
-          context,
-        ).push(MaterialPageRoute<void>(builder: developerBuilder)),
-      ),
+      if (BuildProfile.current.allowsDeveloperTools) ...[
+        const SizedBox(height: 14),
+        SettingsAction(
+          key: const Key('open-developer-tools'),
+          title: 'Developer',
+          description: 'Advanced controls and source diagnostics.',
+          icon: Icons.developer_mode_rounded,
+          tv: true,
+          onPressed: () => Navigator.of(
+            context,
+          ).push(MaterialPageRoute<void>(builder: developerBuilder)),
+        ),
+      ],
     ],
   );
 }

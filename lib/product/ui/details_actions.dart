@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../app/build_profile.dart';
 
 import '../../adapter_platform/adapter_sdk.dart';
 import '../../canonical/domain/media.dart';
@@ -145,6 +146,7 @@ class _DetailsActionsState extends State<DetailsActions> {
         action,
       );
     } else {
+      if (!BuildProfile.current.allowsDemoContent) return;
       if (!await confirm(
             'Apply demo metadata?',
             'This adds a demonstration alternate title. It does not look up live information. Your edits keep priority.',
@@ -236,15 +238,17 @@ class _DetailsActionsState extends State<DetailsActions> {
                   style: widget.tv ? const TextStyle(fontSize: 20) : null,
                 ),
               ),
-            const PopupMenuDivider(),
-            PopupMenuItem(
-              key: const Key('enrich-metadata'),
-              value: _ExtraAction.demo,
-              child: Text(
-                'Apply demo metadata…',
-                style: widget.tv ? const TextStyle(fontSize: 20) : null,
+            if (BuildProfile.current.allowsDemoContent) ...[
+              const PopupMenuDivider(),
+              PopupMenuItem(
+                key: const Key('enrich-metadata'),
+                value: _ExtraAction.demo,
+                child: Text(
+                  'Apply demo metadata…',
+                  style: widget.tv ? const TextStyle(fontSize: 20) : null,
+                ),
               ),
-            ),
+            ],
           ],
         ),
       ],

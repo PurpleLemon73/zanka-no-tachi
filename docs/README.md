@@ -15,6 +15,7 @@ Public technical and product documentation is grouped by purpose.
 - [Product maturity](features/PRODUCT_MATURITY.md)
 - [Daily-use UX](features/DAILY_USE_UX.md)
 - [Responsive UI verification](features/RESPONSIVE_UI.md)
+- [Development and production builds](features/BUILD_PROFILES.md)
 - [Manga reader](features/MANGA_READER.md)
 - [Anime player](features/ANIME_PLAYER.md)
 - [Local library and backup](features/LOCAL_LIBRARY_AND_BACKUP.md)

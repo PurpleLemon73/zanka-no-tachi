@@ -1,4 +1,5 @@
 import '../canonical/domain/identifiers.dart';
+import '../canonical/domain/bindings.dart';
 import '../canonical/domain/media.dart';
 import '../canonical/domain/user_state.dart';
 import '../adapter_platform/adapter_sdk.dart';
@@ -13,6 +14,28 @@ import '../reader/reader_repository.dart';
 import '../player/playback_repository.dart';
 import '../local_library/local_asset.dart';
 import 'smart_resume.dart';
+import '../app/build_profile.dart';
+import '../reader/sample_manga_installer.dart' show sampleMangaId;
+import '../player/sample_anime_installer.dart' show sampleAnimeId;
+
+// Hide only app-owned showcase records in the production projection. Keep all
+// rows, progress and files intact. A reviewed merge with a real binding remains
+// visible even if its surviving canonical ID originally belonged to a sample.
+bool _hiddenDevelopmentMedia(
+  CanonicalMediaId id,
+  Iterable<MediaSourceBinding> bindings,
+) =>
+    !BuildProfile.current.allowsDemoContent &&
+    (id == sampleMangaId || id == sampleAnimeId) &&
+    bindings.every(
+      (binding) => const {
+        ('local-folder', 'zanka-sample-folder'),
+        ('local-folder-alternate', 'zanka-sample-alternate'),
+        ('local-cbz', 'zanka-sample-cbz'),
+        ('local-video', 'zanka-sample-video'),
+        ('local-video-alternate', 'zanka-sample-video-alternate'),
+      }.contains((binding.providerId.value, binding.externalId)),
+    );
 
 class ProductRepository {
   const ProductRepository(this.live, {this.reader, this.playback});
@@ -21,6 +44,7 @@ class ProductRepository {
   final PlaybackRepository? playback;
 
   Future<void> enrichWithDeterministicProof(CanonicalMediaId id) async {
+    if (!BuildProfile.current.allowsDemoContent) return;
     const adapter = DeterministicEnrichmentAdapter();
     await MetadataEnrichmentService(live.database, const [
       adapter,
@@ -28,8 +52,12 @@ class ProductRepository {
   }
 
   Future<List<ProductMediaSummary>> persisted() async {
+    final bindings = await live.database.allMediaBindingsByMedia();
     final media = <CanonicalMedia>[];
     for (final item in await live.persistedMedia()) {
+      if (_hiddenDevelopmentMedia(item.id, bindings[item.id] ?? const [])) {
+        continue;
+      }
       media.add(await live.database.effectiveMedia(item.id) ?? item);
     }
     final library = {
@@ -44,7 +72,6 @@ class ProductRepository {
       for (final progress in await live.database.allAnimeProgress())
         progress.mediaId: progress,
     };
-    final bindings = await live.database.allMediaBindingsByMedia();
     final chapterLabels = await live.database.allChapterLabels();
     final episodeLabels = await live.database.allEpisodeLabels();
     final completedChapters = await live.database.allCompletedChapterIds();
@@ -81,6 +108,8 @@ class ProductRepository {
 
   Future<ProductMediaDetails?> details(CanonicalMediaId requestedId) async {
     final id = await live.database.resolveCanonicalId(requestedId);
+    final mediaBindings = await live.database.mediaBindingsFor(id);
+    if (_hiddenDevelopmentMedia(id, mediaBindings)) return null;
     final media = await live.database.effectiveMedia(id);
     if (media == null) return null;
     final chapters = await live.availability.chapters(id);
@@ -127,7 +156,7 @@ class ProductRepository {
     return ProductMediaDetails(
       summary: ProductMediaSummary(
         media: media,
-        bindings: await live.database.mediaBindingsFor(id),
+        bindings: mediaBindings,
         library: await live.database.libraryEntry(id),
         mangaProgress: mangaProgress,
         animeProgress: animeProgress,

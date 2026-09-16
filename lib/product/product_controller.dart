@@ -16,6 +16,7 @@ import '../adapter_platform/adapter_sdk.dart';
 import 'search_history_store.dart';
 import '../product_maturity/maturity_domain.dart';
 import 'smart_resume.dart';
+import '../app/build_profile.dart';
 
 class ProductController extends ChangeNotifier {
   ProductController(
@@ -135,6 +136,12 @@ class ProductController extends ChangeNotifier {
     );
     notifyListeners();
     unawaited(refreshDiscover());
+  }
+
+  Future<void> setProviderBaseUrl(ProviderId id, Uri baseUrl) async {
+    final current = repository.live.registry.require(id);
+    await repository.live.persistProvider(current.copyWith(baseUrl: baseUrl));
+    notifyListeners();
   }
 
   void setSearchKind(CanonicalMediaKind kind, bool enabled) {
@@ -380,6 +387,7 @@ class ProductController extends ChangeNotifier {
   }
 
   Future<CanonicalMediaId?> installSampleManga() async {
+    if (!BuildProfile.current.allowsDemoContent) return null;
     final installer = sampleInstaller;
     if (installer == null) return null;
     final id = await installer.install();
@@ -388,6 +396,7 @@ class ProductController extends ChangeNotifier {
   }
 
   Future<CanonicalMediaId?> installSampleAnime() async {
+    if (!BuildProfile.current.allowsDemoContent) return null;
     final installer = sampleAnimeInstaller;
     if (installer == null) return null;
     final id = await installer.install();

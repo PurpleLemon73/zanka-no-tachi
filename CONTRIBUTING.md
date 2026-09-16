@@ -1,13 +1,22 @@
 # Contributing
 
-Use Flutter 3.35.4 stable, run `flutter pub get`, and before every PR run:
+Use the Flutter version pinned in CI and its existing Android toolchain (the
+Better Player development plugin requires a full JDK 21 or newer). Run
+`flutter pub get`, then before every PR run:
 
 ```bash
 dart format --output=none --set-exit-if-changed .
 flutter analyze
-flutter test
-flutter build apk --debug
+flutter test --flavor development
+flutter test --flavor production test/app/build_profile_test.dart
+flutter build apk --debug --flavor development
 ```
+
+Profiles are compile-time Flutter flavors, not runtime settings. Development
+tests intentionally include lawful demo assets. Unflavored Dart invocations
+default to production policy; Android builds must select a flavor. See
+[Build profiles](docs/features/BUILD_PROFILES.md) for production builds and
+package/asset separation.
 
 ## Rules
 

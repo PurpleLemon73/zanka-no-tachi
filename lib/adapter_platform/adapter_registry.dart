@@ -149,14 +149,14 @@ class AdapterRegistry {
     ),
     AdapterDescriptor(
       id: AdapterId('local-folder'),
-      displayName: 'Sample Local Manga',
+      displayName: 'Local folder',
       scope: AdapterMediaScope.manga,
       capabilities: {AdapterCapability.readerManifest},
       isLocal: true,
     ),
     AdapterDescriptor(
       id: AdapterId('local-video'),
-      displayName: 'Sample Local Video',
+      displayName: 'Local video',
       scope: AdapterMediaScope.anime,
       capabilities: {AdapterCapability.playbackManifest},
       isLocal: true,

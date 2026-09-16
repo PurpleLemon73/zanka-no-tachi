@@ -33,6 +33,7 @@ import 'local_library/backup_service.dart';
 import 'adapter_platform/adapter_diagnostics.dart';
 import 'adapter_platform/adapter_descriptor.dart';
 import 'app/app_identity.dart';
+import 'app/build_profile.dart';
 import 'app/app_preferences.dart';
 import 'app/local_diagnostics.dart';
 import 'app/presentation_mode.dart';
@@ -42,26 +43,28 @@ import 'live_media/live_media_transport.dart';
 import 'live_media/mangaworld_reader_source.dart';
 import 'live_media/animeworld_playback_source.dart';
 
-const _showcaseSeedEnabled = bool.fromEnvironment('ZANKA_SHOWCASE');
-const _showcaseTvEnabled = bool.fromEnvironment('ZANKA_SHOWCASE_TV');
+const _showcaseSeedEnabled = BuildProfile.seedShowcase;
+const _showcaseTvEnabled = BuildProfile.forceShowcaseTv;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final diagnostics = LocalDiagnostics();
-  final previousFlutterHandler = FlutterError.onError;
-  FlutterError.onError = (details) {
-    unawaited(diagnostics.captureFlutterError(details));
-    previousFlutterHandler?.call(details);
-  };
-  PlatformDispatcher.instance.onError = (error, stack) {
-    unawaited(diagnostics.captureUncaught(error));
-    return false;
-  };
-  await diagnostics.record(
-    LocalLogLevel.info,
-    'lifecycle',
-    '${AppIdentity.displayName} ${AppIdentity.version}+${AppIdentity.buildNumber} started',
-  );
+  if (BuildProfile.current.allowsLocalDiagnostics) {
+    final previousFlutterHandler = FlutterError.onError;
+    FlutterError.onError = (details) {
+      unawaited(diagnostics.captureFlutterError(details));
+      previousFlutterHandler?.call(details);
+    };
+    PlatformDispatcher.instance.onError = (error, stack) {
+      unawaited(diagnostics.captureUncaught(error));
+      return false;
+    };
+    await diagnostics.record(
+      LocalLogLevel.info,
+      'lifecycle',
+      '${AppIdentity.displayName} ${AppIdentity.version}+${AppIdentity.buildNumber} started',
+    );
+  }
   final presentationMode = _showcaseTvEnabled
       ? PresentationMode.tv
       : await const PresentationModeDetector().detect();
@@ -94,7 +97,7 @@ class ZankaApp extends StatefulWidget {
 
 class _ZankaAppState extends State<ZankaApp> {
   late final LiveProviderRepository repository;
-  late final DeveloperSourcesController controller;
+  DeveloperSourcesController? controller;
   late final ProductController productController;
   late final ReaderRepository readerRepository;
   late final PlaybackRepository playbackRepository;
@@ -124,7 +127,9 @@ class _ZankaAppState extends State<ZankaApp> {
           database: CanonicalDatabase(openCanonicalConnection()),
           transport: HttpProviderTransport(),
         );
-    controller = DeveloperSourcesController(repository)..initialize();
+    if (BuildProfile.current.allowsDeveloperTools) {
+      controller = DeveloperSourcesController(repository)..initialize();
+    }
     final readerPreferences = ReaderPreferencesStore();
     playerPreferences =
         widget.playbackPreferencesStore ?? PlaybackPreferencesStore();
@@ -183,8 +188,12 @@ class _ZankaAppState extends State<ZankaApp> {
         reader: readerRepository,
         playback: playbackRepository,
       ),
-      sampleInstaller: SampleMangaInstaller(repository.database),
-      sampleAnimeInstaller: SampleAnimeInstaller(repository.database),
+      sampleInstaller: BuildProfile.current.allowsDemoContent
+          ? SampleMangaInstaller(repository.database)
+          : null,
+      sampleAnimeInstaller: BuildProfile.current.allowsDemoContent
+          ? SampleAnimeInstaller(repository.database)
+          : null,
       localLibrary: localLibraryService,
       backup: backupService,
       searchHistoryStore: ownsRepository
@@ -241,7 +250,7 @@ class _ZankaAppState extends State<ZankaApp> {
 
   @override
   void dispose() {
-    controller.dispose();
+    controller?.dispose();
     productController.dispose();
     liveMediaTransport.close();
     if (ownsRepository) unawaited(repository.dispose());
@@ -273,11 +282,13 @@ class _ZankaAppState extends State<ZankaApp> {
           ? OnboardingScreen(onComplete: _finishOnboarding)
           : ProductShell(
               controller: productController,
-              developerBuilder: (_) => DeveloperSourcesScreen(
-                controller: controller,
-                diagnostics: diagnostics,
-                playbackPreferencesStore: playerPreferences,
-              ),
+              developerBuilder: (_) => BuildProfile.current.allowsDeveloperTools
+                  ? DeveloperSourcesScreen(
+                      controller: controller!,
+                      diagnostics: diagnostics,
+                      playbackPreferencesStore: playerPreferences,
+                    )
+                  : const SizedBox.shrink(),
               aboutBuilder: (_) => AboutZankaScreen(diagnostics: diagnostics),
               appearance: current,
               onAppearanceChanged: _setAppearance,

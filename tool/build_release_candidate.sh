@@ -7,6 +7,10 @@ if [[ "$mode" != "debug" && "$mode" != "release" ]]; then
   exit 2
 fi
 expected_package="dev.zanka.notachi"
+build_profile="development"
+if [[ "$mode" == "release" ]]; then
+  build_profile="production"
+fi
 expected_signer="3F4A86F7F4DDA398E04DD059DD33D7FC274CACB36217A468B6D8D7C7074C1341"
 
 android_sdk="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
@@ -47,12 +51,16 @@ fi
 flutter pub get
 dart format --output=none --set-exit-if-changed .
 flutter analyze
-flutter test
-flutter build apk "--$mode"
+flutter test --flavor development
+flutter test --flavor production test/app/build_profile_test.dart
+flutter build apk "--$mode" --flavor "$build_profile"
 
-source_apk="build/app/outputs/flutter-apk/app-$mode.apk"
+source_apk="build/app/outputs/flutter-apk/app-$build_profile-$mode.apk"
 version="$(sed -n 's/^version: \([^+]*\).*/\1/p' pubspec.yaml)"
 artifact="artifacts/zanka-no-tachi-v$version.apk"
+if [[ "$mode" == "debug" ]]; then
+  artifact="artifacts/zanka-no-tachi-v$version-development-debug.apk"
+fi
 mkdir -p artifacts
 cp "$source_apk" "$artifact"
 shasum -a 256 "$artifact" > "$artifact.sha256"

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../app/app_identity.dart';
+import '../../app/build_profile.dart';
 import '../../app/local_diagnostics.dart';
 import 'onboarding_screen.dart';
 
@@ -61,54 +62,56 @@ class AboutZankaScreen extends StatelessWidget {
                       applicationVersion: AppIdentity.version,
                     ),
                   ),
-                  const Divider(height: 32),
-                  Text(
-                    'Local diagnostics',
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                  const Text(
-                    'Recent redacted records stay on this device and are never sent automatically.',
-                  ),
-                  FutureBuilder<List<DiagnosticRecord>>(
-                    future: diagnostics.records(),
-                    builder: (context, snapshot) => Text(
-                      '${snapshot.data?.length ?? 0} bounded record(s)',
-                      key: const Key('diagnostic-count'),
+                  if (BuildProfile.current.allowsLocalDiagnostics) ...[
+                    const Divider(height: 32),
+                    Text(
+                      'Local diagnostics',
+                      style: Theme.of(context).textTheme.titleLarge,
                     ),
-                  ),
-                  Wrap(
-                    spacing: 8,
-                    children: [
-                      OutlinedButton.icon(
-                        key: const Key('copy-diagnostics'),
-                        onPressed: () async {
-                          await Clipboard.setData(
-                            ClipboardData(
-                              text: await diagnostics.redactedReport(),
-                            ),
-                          );
-                          if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Redacted diagnostics copied.'),
+                    const Text(
+                      'Recent redacted records stay on this device and are never sent automatically.',
+                    ),
+                    FutureBuilder<List<DiagnosticRecord>>(
+                      future: diagnostics.records(),
+                      builder: (context, snapshot) => Text(
+                        '${snapshot.data?.length ?? 0} bounded record(s)',
+                        key: const Key('diagnostic-count'),
+                      ),
+                    ),
+                    Wrap(
+                      spacing: 8,
+                      children: [
+                        OutlinedButton.icon(
+                          key: const Key('copy-diagnostics'),
+                          onPressed: () async {
+                            await Clipboard.setData(
+                              ClipboardData(
+                                text: await diagnostics.redactedReport(),
                               ),
                             );
-                          }
-                        },
-                        icon: const Icon(Icons.copy),
-                        label: const Text('Copy report'),
-                      ),
-                      OutlinedButton.icon(
-                        key: const Key('clear-diagnostics'),
-                        onPressed: () async {
-                          await diagnostics.clear();
-                          if (context.mounted) Navigator.pop(context);
-                        },
-                        icon: const Icon(Icons.delete_sweep_outlined),
-                        label: const Text('Clear diagnostics'),
-                      ),
-                    ],
-                  ),
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Redacted diagnostics copied.'),
+                                ),
+                              );
+                            }
+                          },
+                          icon: const Icon(Icons.copy),
+                          label: const Text('Copy report'),
+                        ),
+                        OutlinedButton.icon(
+                          key: const Key('clear-diagnostics'),
+                          onPressed: () async {
+                            await diagnostics.clear();
+                            if (context.mounted) Navigator.pop(context);
+                          },
+                          icon: const Icon(Icons.delete_sweep_outlined),
+                          label: const Text('Clear diagnostics'),
+                        ),
+                      ],
+                    ),
+                  ],
                 ],
               ),
             ),

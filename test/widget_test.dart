@@ -20,7 +20,10 @@ void main() {
       final repository = _repository(database);
       await tester.pumpWidget(ZankaApp(repository: repository));
       await tester.pumpAndSettle();
-      expect(find.text('Zanka'), findsWidgets);
+      expect(
+        find.byKey(const Key('product-primary-navigation')),
+        findsOneWidget,
+      );
       await _openDeveloper(tester);
       expect(find.text('Developer Sources'), findsOneWidget);
       expect(find.byKey(const Key('provider-mangaworld')), findsOneWidget);

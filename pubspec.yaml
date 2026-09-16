@@ -70,9 +70,12 @@ flutter:
   # the material Icons class.
   uses-material-design: true
   assets:
-    - assets/sample_anime/
-    - assets/showcase/ashen_blade/
-    - assets/showcase/nova_pulse/
+    - path: assets/sample_anime/
+      flavors: [development]
+    - path: assets/showcase/ashen_blade/
+      flavors: [development]
+    - path: assets/showcase/nova_pulse/
+      flavors: [development]
 
   # To add assets to your application, add an assets section, like this:
   # assets:

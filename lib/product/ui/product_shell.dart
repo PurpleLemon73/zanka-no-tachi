@@ -11,7 +11,9 @@ import 'product_navigation.dart';
 import 'media_details_screen.dart';
 import 'local_media_screen.dart';
 import 'settings_visuals.dart';
+import 'source_settings_page.dart';
 import '../../app/app_preferences.dart';
+import '../../app/build_profile.dart';
 import '../smart_resume.dart';
 import '../../app/presentation_mode.dart';
 import '../../tv/tv_product_shell.dart';
@@ -687,69 +689,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Widget _sources() => SettingsDetailPage(
-    title: 'Sources',
-    description: 'Choose where discovery begins.',
-    child: AnimatedBuilder(
-      animation: controller,
-      builder: (context, _) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          for (final provider in controller.providers)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 20),
-              child: MergeSemantics(
-                child: Row(
-                  children: [
-                    const Icon(Icons.travel_explore_outlined),
-                    const SizedBox(width: 18),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            provider.displayName,
-                            style: Theme.of(context).textTheme.titleLarge,
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            '${provider.mediaKind.name} · ${provider.baseUrl.host}',
-                            style: Theme.of(context).textTheme.bodyMedium,
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Switch(
-                      key: ValueKey('setting-provider-${provider.id.value}'),
-                      value: provider.enabled,
-                      onChanged: (value) =>
-                          controller.setProviderEnabled(provider.id, value),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          const SizedBox(height: 22),
-          ZankaSurface(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Source fallback',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Per-media preference first, then available sources in stable order.',
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    ),
-  );
+  Widget _sources() => SourceSettingsPage(controller: controller);
 
   Widget _samples() => SettingsDetailPage(
     title: 'Offline samples',
@@ -905,32 +845,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    SettingsAction(
-                      key: const Key('settings-samples'),
-                      icon: Icons.offline_bolt_outlined,
-                      title: 'Offline samples',
-                      description: 'A ready-to-read, ready-to-watch first try.',
-                      onPressed: () =>
-                          _openCategory('samples', (_) => _samples()),
-                    ),
+                    if (BuildProfile.current.allowsDemoContent)
+                      SettingsAction(
+                        key: const Key('settings-samples'),
+                        icon: Icons.offline_bolt_outlined,
+                        title: 'Offline samples',
+                        description:
+                            'A ready-to-read, ready-to-watch first try.',
+                        onPressed: () =>
+                            _openCategory('samples', (_) => _samples()),
+                      ),
                     SettingsAction(
                       key: const Key('open-about'),
                       icon: Icons.info_outline_rounded,
                       title: 'Zanka no Tachi',
-                      description:
-                          'About, help, privacy, licenses and local diagnostics.',
+                      description: BuildProfile.current.allowsLocalDiagnostics
+                          ? 'About, help, privacy, licenses and local diagnostics.'
+                          : 'About, help, privacy and licenses.',
                       onPressed: () =>
                           _openCategory('about', widget.aboutBuilder),
-                      onLongPress: () {
-                        setState(() => _developerToolsEnabled = true);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Developer tools enabled.'),
-                          ),
-                        );
-                      },
+                      onLongPress: !BuildProfile.current.allowsDeveloperTools
+                          ? null
+                          : () {
+                              setState(() => _developerToolsEnabled = true);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Developer tools enabled.'),
+                                ),
+                              );
+                            },
                     ),
-                    if (_developerToolsEnabled) ...[
+                    if (BuildProfile.current.allowsDeveloperTools &&
+                        _developerToolsEnabled) ...[
                       const SizedBox(height: 20),
                       Text(
                         'ADVANCED',

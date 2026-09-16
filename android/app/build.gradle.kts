@@ -51,11 +51,21 @@ android {
         }
     }
 
+    flavorDimensions += "product"
+    productFlavors {
+        create("development") {
+            dimension = "product"
+            applicationIdSuffix = ".debug"
+            manifestPlaceholders["zankaAppLabel"] = "Zanka no Tachi Dev"
+        }
+        create("production") {
+            dimension = "product"
+            manifestPlaceholders["zankaAppLabel"] = "Zanka no Tachi"
+        }
+    }
+
     buildTypes {
         debug {
-            // Keep local/debug probes installable beside the permanent public
-            // signing identity without replacing production user data.
-            applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
         }
         release {
