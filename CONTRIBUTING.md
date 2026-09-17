@@ -1,7 +1,8 @@
 # Contributing
 
-Use the Flutter version pinned in CI and its existing Android toolchain (the
-Better Player development plugin requires a full JDK 21 or newer). Run
+Use Flutter 3.47.2 and full JDK 21, matching CI. Set local `ZANKA_JAVA_HOME` or
+`JAVA_HOME` to that JDK; see [JDK selection](docs/features/BUILD_PROFILES.md#jdk-21-selection).
+The Android wrapper does not change global machine configuration. Run
 `flutter pub get`, then before every PR run:
 
 ```bash
@@ -9,7 +10,8 @@ dart format --output=none --set-exit-if-changed .
 flutter analyze
 flutter test --flavor development
 flutter test --flavor production test/app/build_profile_test.dart
-flutter build apk --debug --flavor development
+tool/with_android_jdk.sh flutter build apk --debug --flavor development
+tool/with_android_jdk.sh flutter build apk --debug --flavor production
 ```
 
 Profiles are compile-time Flutter flavors, not runtime settings. Development

@@ -12,11 +12,13 @@ flavor is imposed on other platforms' existing native configurations.
 
 ```bash
 flutter pub get
-flutter run --flavor development
+tool/with_android_jdk.sh flutter run --flavor development
 flutter test --flavor development
 flutter test --flavor production test/app/build_profile_test.dart
-flutter build apk --debug --flavor development
-flutter build apk --release --flavor production
+tool/with_android_jdk.sh flutter build apk --debug --flavor development
+tool/with_android_jdk.sh flutter build apk --debug --flavor production
+# Maintainer/local only: requires existing private signing configuration.
+tool/with_android_jdk.sh flutter build apk --release --flavor production
 ```
 
 | Profile | Android application ID | Launcher label | Primary artifact |
@@ -31,10 +33,35 @@ but a debug signer: do not install it over a signed production app. Use the
 development flavor for everyday debugging. Existing development debug installs
 retain their ID; existing signed production installs retain their upgrade ID.
 
-Reuse the existing supported toolchain. No dependency, Flutter, Gradle, AGP or
-Kotlin upgrade is part of this split. Better Player's retained development
-plugin requires a full JDK 21+; use a compatible installed JDK for the build
-process without changing another project's global configuration.
+### JDK 21 selection
+
+Use a full **JDK 21**, matching CI's Temurin 21. Set `ZANKA_JAVA_HOME` in your
+local shell to its installation directory; do not commit that path. The wrapper
+also accepts `JAVA_HOME` (as supplied by CI), checks Java 21 plus `javac`/`jlink`,
+and pins the Gradle daemon to that JDK for the invoked command only. It does not
+modify global Flutter configuration, shell profiles or other projects. App
+Java/Kotlin bytecode targets remain 17. No Flutter/Gradle/AGP/Kotlin upgrade is
+required.
+
+Verify selection before building:
+
+```bash
+tool/with_android_jdk.sh java -version
+tool/with_android_jdk.sh ./android/gradlew -p android --version
+flutter doctor -v
+```
+
+The first two commands must show Java 21 and the selected Gradle daemon JDK.
+`flutter doctor -v` shows Flutter's separate global Java selection, which may
+still be 17 or Android Studio's bundled JDK: changing `JAVA_HOME` alone does not
+override it. The wrapper's `org.gradle.java.home` option overrides that choice
+for the actual Android build. Use the wrapper for documented Android commands,
+not a bare `flutter build`. SDK license-status warnings are separate from JDK
+selection.
+
+CI tests both profiles and builds both debug flavors with this same wrapper.
+The production-debug artifact is a CI check, not a signed public release; no
+release credentials or APK uploads are added to CI.
 
 Production signing continues to use ignored `android/key.properties` and the
 external permanent keystore. Never commit either or print passwords. The
@@ -81,7 +108,7 @@ Both profiles start without demo seed data by default. Development provides
 manual sample installation and may explicitly opt into deterministic bootstrap:
 
 ```bash
-flutter run --flavor development --dart-define=ZANKA_SHOWCASE=true
+tool/with_android_jdk.sh flutter run --flavor development --dart-define=ZANKA_SHOWCASE=true
 ```
 
 `ZANKA_SHOWCASE_TV=true` remains a development-only showcase override. Both

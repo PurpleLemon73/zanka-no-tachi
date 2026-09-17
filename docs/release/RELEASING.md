@@ -2,8 +2,11 @@
 
 ## Prepare
 
-Use Flutter 3.47.2's supported Android stack: JDK 21–25, Gradle 9.3.1, AGP
-9.1.0 and Kotlin 2.4.0. A JRE without `jlink` is insufficient.
+Use Flutter 3.47.2, full JDK 21 (CI uses Temurin), Gradle 9.3.1, AGP 9.1.0 and
+Kotlin 2.4.0. Select the JDK with local `ZANKA_JAVA_HOME` or CI's `JAVA_HOME`;
+see [JDK selection](../features/BUILD_PROFILES.md#jdk-21-selection). A JRE without
+`javac`/`jlink` is insufficient. The build helper checks and pins JDK 21 without
+changing global Flutter settings.
 
 1. Use a clean checkout and verify no database, backup, imported media, local
    config, keystore or credential is tracked.
@@ -16,8 +19,10 @@ Use Flutter 3.47.2's supported Android stack: JDK 21–25, Gradle 9.3.1, AGP
    unintended large binaries before changing repository visibility.
 
 Debug APKs are testing artifacts only:
-`flutter build apk --debug --flavor development`. The signed production variant
-is `flutter build apk --release --flavor production`. See
+`tool/with_android_jdk.sh flutter build apk --debug --flavor development`.
+CI additionally checks `tool/with_android_jdk.sh flutter build apk --debug --flavor production`
+without release credentials. The signed production variant is maintainer/local
+only: `tool/with_android_jdk.sh flutter build apk --release --flavor production`. See
 [Build profiles](../features/BUILD_PROFILES.md) for identities and exclusions.
 
 ## Signed Android release

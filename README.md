@@ -138,8 +138,10 @@ prompt/process archive.
 
 ## Build from source
 
-Use the Flutter version pinned in CI, a compatible full JDK 21 or newer, and
-the existing Android SDK. The development plugin requires JDK 21+:
+Use Flutter 3.47.2, full JDK 21 (CI uses Temurin), and the existing Android SDK.
+Select your local JDK using `ZANKA_JAVA_HOME` or `JAVA_HOME`; the
+[build wrapper](docs/features/BUILD_PROFILES.md#jdk-21-selection) verifies and pins
+it without changing global Flutter settings:
 
 ```bash
 flutter pub get
@@ -147,11 +149,13 @@ dart format --output=none --set-exit-if-changed .
 flutter analyze
 flutter test --flavor development
 flutter test --flavor production test/app/build_profile_test.dart
-flutter build apk --debug --flavor development
+tool/with_android_jdk.sh flutter build apk --debug --flavor development
+tool/with_android_jdk.sh flutter build apk --debug --flavor production
 ```
 
-Run with `flutter run --flavor development`. For the clean production product,
-use `flutter build apk --release --flavor production`; signing is maintainer-owned
+Run with `tool/with_android_jdk.sh flutter run --flavor development`.
+For the clean production product, use
+`tool/with_android_jdk.sh flutter build apk --release --flavor production`; signing is maintainer-owned
 and has no debug-key fallback. See [Build profiles](docs/features/BUILD_PROFILES.md)
 and [Releasing](docs/release/RELEASING.md).
 

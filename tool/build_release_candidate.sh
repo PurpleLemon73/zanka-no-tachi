@@ -48,12 +48,13 @@ if [[ "$mode" == "release" ]]; then
   fi
 fi
 
+tool/with_android_jdk.sh true
 flutter pub get
 dart format --output=none --set-exit-if-changed .
 flutter analyze
 flutter test --flavor development
 flutter test --flavor production test/app/build_profile_test.dart
-flutter build apk "--$mode" --flavor "$build_profile"
+tool/with_android_jdk.sh flutter build apk "--$mode" --flavor "$build_profile"
 
 source_apk="build/app/outputs/flutter-apk/app-$build_profile-$mode.apk"
 version="$(sed -n 's/^version: \([^+]*\).*/\1/p' pubspec.yaml)"
