@@ -69,6 +69,7 @@ android {
             versionNameSuffix = "-debug"
         }
         release {
+            proguardFiles("proguard-rules.pro")
             // Never fall back to the debug identity. Public release tooling
             // additionally verifies the certificate fingerprint after build.
             signingConfig = signingConfigs.findByName("release")

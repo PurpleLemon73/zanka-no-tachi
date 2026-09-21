@@ -57,6 +57,9 @@ flutter test --flavor production test/app/build_profile_test.dart
 tool/with_android_jdk.sh flutter build apk "--$mode" --flavor "$build_profile"
 
 source_apk="build/app/outputs/flutter-apk/app-$build_profile-$mode.apk"
+if [[ "$mode" == "release" ]]; then
+  tool/with_android_jdk.sh tool/verify_release_startup.sh "$source_apk"
+fi
 version="$(sed -n 's/^version: \([^+]*\).*/\1/p' pubspec.yaml)"
 artifact="artifacts/zanka-no-tachi-v$version.apk"
 if [[ "$mode" == "debug" ]]; then

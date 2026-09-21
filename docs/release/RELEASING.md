@@ -38,6 +38,21 @@ tool/release_android.sh
 Without local signing configuration,
 `tool/build_release_candidate.sh release` fails clearly before building.
 
+The release helper also runs `tool/verify_release_startup.sh` against the actual
+APK before copying it to `artifacts/`. This requires SDK cmdline-tools/latest.
+It checks that `WorkDatabase_Impl` retains its public no-argument constructor:
+Better Player's Android dependency brings WorkManager 2.7.0 / Room 2.2.5, whose
+consumer rules alone do not retain that reflected constructor under strict R8
+full mode. The narrow application rule preserves it without disabling shrinking.
+
+This artifact check is **not** a launch certification. Install the signed
+production APK as an in-place update (`adb -s SERIAL install -r APK`), without
+uninstalling or clearing data. Launch `dev.zanka.notachi/.MainActivity`, verify
+Home and basic navigation, close/reopen, and inspect fresh package-scoped logs
+for startup failures. An `am start` success alone is insufficient: Android
+startup providers can still crash before Flutter displays Home. Keep physical
+Samsung/Fire verification explicitly pending until those devices are retested.
+
 Beta.1 was debug-signed. Beta.2 and later public Android releases use the
 permanent fingerprint documented above. Publish the required beta.1
 backup/uninstall/install/restore migration warning prominently.
