@@ -1,42 +1,43 @@
-## Zanka no Tachi v0.2.0-beta.4 — Reader UI v2
+## Zanka no Tachi 1.0.0 RC.1
 
-### Highlights
+Preparation template only. Do not publish until explicitly authorized and the
+candidate gates below have evidence. This is not stable 1.0.
 
-- Manga Reader UI v2 with Previous/Next Chapter, a prominent completion action,
-  and a bounded lazy canonical chapter picker.
-- Truthful volume-aware chapter navigation without invented volume metadata.
-- Exact source-specific page resume remains independent from canonical
-  completion; manual Next starts at page one without overwriting saved resume.
-- Live Video Display Mode controls with independent fit/aspect selection,
-  presets, custom ratios, and Auto / Original as the safe default.
-- `video_player` remains the sole production playback engine; no experimental
-  player runtime is included in this APK.
+### Candidate
 
-### Upgrade note
-
-Beta.2 through beta.4 use the same permanent production signer, so Android updates
-normally in place. Beta.1 was debug-signed and still requires the documented
-backup → uninstall → install → restore migration.
-
-### Artifact
-
-- `zanka-no-tachi-v0.2.0-beta.4.apk`
+- Version: `1.0.0-rc.1` (`versionCode 6`)
+- Production APK: `zanka-no-tachi-v1.0.0-rc.1.apk`
 - Package: `dev.zanka.notachi`
-- Version: `0.2.0-beta.4` (`versionCode 5`)
 - Signer SHA-256: `3F:4A:86:F7:F4:DD:A3:98:E0:4D:D0:59:DD:33:D7:FC:27:4C:AC:B3:62:17:A4:68:B6:D8:D7:C7:07:4C:13:41`
-- APK size: `92,077,580` bytes
-- APK SHA-256: `6e34c3fd89e535ff9d0cdb7e6a009075b356aa07cc259c3833c74fd162c327aa`
+- Source commit: **fill from the clean preparation commit**
+- APK bytes and SHA-256: **fill from the verified candidate, never an older beta**
 
-### Release gates
+### Product and upgrade boundaries
 
-- [x] clean-tree signed release pipeline passed
-- [x] Samsung beta.3 → beta.4 in-place update gate passed
-- [x] Television_4K Leanback/update gate passed
-- [ ] signer and downloaded APK checksum independently verified
+One adaptive production APK supports phone and TV. It excludes demo assets and
+Developer UI. `video_player` is the only selectable production engine; Better
+Player's native/transitive dependencies remain packaged. Database schema 6 and
+data-only backup format 3 are unchanged. Backups exclude media bytes.
 
-Physical Fire TV validation remains deferred. Zanka is architecturally Fire
-OS-compatible without Google Play Services, but this is not certification.
+Update production-signed beta.2+ in place with the permanent signer; do not
+uninstall or clear data. Legacy debug-signed beta.1 has its own migration guide.
+The WorkManager/Room constructor fix and APK startup guard remain enabled,
+without disabling shrinking.
 
-Advanced selectable embedded audio/subtitle tracks are not exposed by the
-production engine. Physical Fire TV validation remains deferred, and Vega OS is
-unsupported.
+### Candidate gates — record exact artifact evidence
+
+- [ ] clean preparation commit; formatter, analyzer, development and production tests
+- [ ] signed production pipeline; expected package, versionCode, signer and checksum
+- [ ] packaged WorkDatabase constructor; no production demo assets or Developer UI
+- [ ] candidate Samsung in-place update and retained library/progress/resume
+- [ ] candidate Fire Stick in-place update, remote navigation and HOME/return
+- [ ] candidate cold startup/reopen and fresh onboarding on a disposable installation
+- [ ] backup/restore tested only on a disposable installation
+
+The maintainer confirmed startup/primary flows on Samsung and Fire Stick for
+the corrected **pre-RC** APK at `98d3b2e`. Do not mark RC gates from that evidence
+or from emulator results. Record device/OS and APK SHA-256 for each physical gate.
+
+Provider availability and formats vary. Advanced selectable tracks, cloud sync,
+background playback and Vega OS are not promised. Zanka remains independent and
+unofficial and grants no rights to third-party content.

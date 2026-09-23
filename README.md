@@ -13,6 +13,10 @@ or use compatible public sources without making the product UI provider-aware.
 or [build it yourself](#build-from-source). One adaptive APK selects the mobile
 or 10-foot TV experience from Android's semantic device capabilities.
 
+The source tree is preparing **1.0.0-rc.1 (build 6)** for maintainer testing, not
+a published stable 1.0 release. The link above remains the last published beta.
+See the [RC.1 preparation and validation handoff](docs/release/v1.0.0-rc.1.md).
+
 ## See it in action
 
 | Mobile Home | Manga details |
@@ -56,7 +60,7 @@ store. Download `zanka-no-tachi-v0.2.0-beta.4.apk` from Releases, verify the
 published SHA-256 checksum, then install it:
 
 ```bash
-adb install zanka-no-tachi-v0.2.0-beta.4.apk
+adb install -r zanka-no-tachi-v0.2.0-beta.4.apk
 ```
 
 On a phone or tablet, open Zanka from the launcher and follow onboarding. On
@@ -89,9 +93,11 @@ without touch.
 | Play / Pause | Playback |
 | Back | Hide controls or go back |
 
-Android TV and Google TV have emulator validation. The architecture is designed
-for Fire OS without Google Play Services, but physical Fire TV validation is
-still outstanding.
+Android TV and Google TV have emulator validation. The maintainer confirmed
+startup and primary flows on a Samsung phone and Fire TV Stick using the
+corrected pre-RC production APK. RC.1 itself still needs physical validation;
+this is not blanket Fire certification. Core Fire OS use requires no Google
+Play Services.
 
 ## Sources and local media
 
@@ -106,15 +112,20 @@ architecture. Physical paths are never canonical identity. Missing files remain
 repairable, and portable backups intentionally exclude media bytes and absolute
 paths.
 
-## Beta status
+## Release candidate status
 
-`v0.2.0-beta.4` is an Android public beta. Beta.2 through beta.4 share Zanka's
-permanent production signer and update normally. Beta.1 users must first export
-a backup, uninstall the debug-signed beta.1, install the current beta, and
-restore. Expect provider markup/delivery to change, occasional unsupported live
-installments, and migration changes before 1.0. There is no cloud sync,
-background playback, TV recommendations/channels, or TV-specific manga reader.
-Physical Fire TV runtime validation remains a maintainer follow-up.
+`v0.2.0-beta.4` remains the published Android beta; `1.0.0-rc.1+6` is the current
+candidate, not stable 1.0. Production-signed beta.2 and later installations
+update in place with the same package and permanent certificate; do not clear
+their data. Legacy debug-signed beta.1 has a separate
+[signing migration](docs/release/BETA1_TO_BETA2_MIGRATION.md).
+
+Production bundles no demo assets or Developer UI and selects only
+`video_player`; Better Player's native dependencies remain packaged but its
+experimental playback selection is development-only. Database schema 6 and
+data-only backup format 3 are unchanged for RC.1. Expect provider markup/delivery
+changes and unsupported live installments. There is no cloud sync, background
+playback, TV recommendations/channels, or TV-specific manga reader.
 
 ## Architecture
 

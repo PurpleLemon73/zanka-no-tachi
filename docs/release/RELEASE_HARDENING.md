@@ -1,5 +1,13 @@
 # M9 Release Hardening
 
+This is historical M9 evidence, not a certification of the current candidate.
+For **1.0.0-rc.1+6**, use the [current release handoff](v1.0.0-rc.1.md): schema 6,
+backup format 3, production/development flavors, permanent signing, no production
+demo assets or Developer UI, and the retained WorkDatabase/R8 startup guard.
+The maintainer confirmed Samsung/Fire primary flows on the corrected pre-RC
+build; the new RC artifact still requires its own physical checks. Older
+configuration/verification counts below describe M9 only.
+
 ## UX, onboarding and accessibility
 
 First run presents four concise pages covering the product, interchangeable and
@@ -94,32 +102,17 @@ and package IDs, docs and upgrade/reinstall notes.
   platform packaging, instrumentation-based startup profiling and signed beta
   distribution—not source-specific bypasses.
 
-## Deterministic fresh-install smoke test
+## Historical smoke evidence and current validation
 
 The M9 RC was installed on a Samsung Android 16 device after clearing only
 `dev.zanka.notachi` state. It cold-launched onboarding page 1/4, Skip reached the
 empty Home with public discovery, and a force-stop/cold restart returned directly
 to Home. The complete reader/player/import/backup paths retain the M5–M8 physical
-evidence and pass the full regression suite; repeat all steps below before a
-signed public release.
+evidence. That old fresh-install procedure is not an instruction to remove
+current production data or to validate RC.1 with a debug build.
 
-1. Build `tool/build_release_candidate.sh debug`; verify its SHA-256.
-2. Uninstall `dev.zanka.notachi`, install the APK, and launch offline.
-3. Read/skip onboarding; verify Home, empty Library and Settings/About.
-4. Enable network and Search a public title; load exactly one next page; open
-   Details/save it. Disable network and verify saved metadata remains.
-5. Install the offline reader sample; open chapter 1, advance, close/reopen, and
-   verify canonical progress/resume. Switch source and verify no page equivalence
-   is assumed.
-6. Install the offline player sample; play/seek episode 1, close/reopen, and
-   verify resume. Switch encode and verify its timestamp starts independently.
-7. Import a lawful real CBZ and video in Local media; read/play both. Rename one
-   original/source file as applicable, scan missing assets, then repair it.
-8. Edit title/cover metadata; refresh and verify the override survives.
-9. Create a data-only backup. Add another Library item, restore the backup, and
-   verify restore is non-destructive. Copy the backup to a fresh app install,
-   restore, and verify local assets are missing/repairable rather than path-bound.
-10. Open Developer → Adapter Diagnostics; verify offline/parser states and copy/
-    clear a redacted report. Clear thumbnail/temp cache and verify media/state stay.
-11. Force-stop/relaunch. Verify onboarding stays complete and Library, progress,
-    preferences, provider config, overrides and repaired sources persist.
+Use the [RC candidate checklist](v1.0.0-rc.1.md#candidate-installation-checklist)
+with the exact signed production APK. Update existing devices in place. Test
+fresh onboarding and backup/restore only on separate disposable installations;
+use lawful imports rather than development-only sample installers. Never clear
+or uninstall a maintainer's production installation for this validation.

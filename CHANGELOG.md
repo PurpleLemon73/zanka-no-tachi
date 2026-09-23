@@ -4,6 +4,25 @@ This project follows Semantic Versioning.
 
 ## [Unreleased]
 
+## [1.0.0-rc.1] - Preparation, not yet published
+
+- Prepare the first 1.0 release candidate (`versionCode 6`) from the validated
+  production code; no product, dependency, schema or signing changes in this
+  preparation checkpoint.
+- Include the intervening reader continuity/defaults, player presentation and
+  TV focus, watched-state, responsive UI and Details loading fixes.
+- Keep production and development flavors separate: production excludes demo
+  assets and Developer UI and selects only `video_player`. Better Player's
+  native dependencies remain packaged but its experimental selector is not
+  available in production.
+- Retain the WorkManager/Room reflected-constructor R8 fix and actual-APK
+  startup guard, with shrinking enabled.
+- Retain schema 6, backup format 3 and the permanent signer for in-place updates
+  from production-signed betas. Data-only backups do not include media files.
+- The maintainer confirmed Samsung and Fire Stick startup/primary flows on the
+  corrected pre-RC APK. RC.1 physical checks remain pending; see
+  [RC.1 handoff](docs/release/v1.0.0-rc.1.md).
+
 ## [0.2.0-beta.4] - 2026-09-02
 
 - Added Manga Reader UI v2 with Previous/Next Chapter, a prominent completion

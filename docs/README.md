@@ -31,7 +31,8 @@ Public technical and product documentation is grouped by purpose.
 ## TV and release
 
 - [Android TV / Google TV / Fire OS experience](tv/TV_EXPERIENCE.md)
-- [Installing the beta](release/INSTALLING.md)
+- [Installing and updating production builds](release/INSTALLING.md)
+- [1.0 RC.1 preparation and validation handoff](release/v1.0.0-rc.1.md)
 - [Release hardening](release/RELEASE_HARDENING.md)
 - [Maintainer release process](release/RELEASING.md)
 - [v0.2.0-beta.1 release notes](release/v0.2.0-beta.1.md)
@@ -40,4 +41,4 @@ Public technical and product documentation is grouped by purpose.
 - [v0.2.0-beta.4 release notes](release/v0.2.0-beta.4.md)
 - [Production Android signing](release/PRODUCTION_SIGNING.md)
 - [beta.1 to beta.2 migration](release/BETA1_TO_BETA2_MIGRATION.md)
-- [Deferred Fire TV validation](release/FIRE_TV_VALIDATION.md)
+- [Fire TV validation status and checklist](release/FIRE_TV_VALIDATION.md)
