@@ -1,11 +1,11 @@
 # M9 Release Hardening
 
-This is historical M9 evidence, not a certification of the current candidate.
-For **1.0.0-rc.1+6**, use the [current release handoff](v1.0.0-rc.1.md): schema 6,
+This is historical M9 evidence, not certification of the current stable artifact.
+For **1.0.0+7**, use the [current release handoff](v1.0.0.md): schema 6,
 backup format 3, production/development flavors, permanent signing, no production
 demo assets or Developer UI, and the retained WorkDatabase/R8 startup guard.
-The maintainer confirmed Samsung/Fire primary flows on the corrected pre-RC
-build; the new RC artifact still requires its own physical checks. Older
+The maintainer confirmed Samsung/Fire primary flows and subsequently accepted
+RC testing; the stable artifact still requires its own physical checks. Older
 configuration/verification counts below describe M9 only.
 
 ## UX, onboarding and accessibility
@@ -109,9 +109,9 @@ The M9 RC was installed on a Samsung Android 16 device after clearing only
 empty Home with public discovery, and a force-stop/cold restart returned directly
 to Home. The complete reader/player/import/backup paths retain the M5–M8 physical
 evidence. That old fresh-install procedure is not an instruction to remove
-current production data or to validate RC.1 with a debug build.
+current production data or to validate stable 1.0.0 with a debug build.
 
-Use the [RC candidate checklist](v1.0.0-rc.1.md#candidate-installation-checklist)
+Use the [stable checklist](v1.0.0.md#stable-artifact-handoff-checklist)
 with the exact signed production APK. Update existing devices in place. Test
 fresh onboarding and backup/restore only on separate disposable installations;
 use lawful imports rather than development-only sample installers. Never clear

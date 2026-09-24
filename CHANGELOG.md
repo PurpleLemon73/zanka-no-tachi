@@ -4,6 +4,19 @@ This project follows Semantic Versioning.
 
 ## [Unreleased]
 
+## [1.0.0] - Prepared 2026-09-24; publication pending
+
+- Promote the maintainer-approved RC.1 codebase to the first stable version,
+  `1.0.0+7`, with version metadata and release documentation changes only.
+- Preserve in-place upgrades from production-signed beta.2+ and RC.1, canonical
+  library/progress, exact source-specific resume, schema 6 and backup format 3.
+- Retain production/development separation, permanent production signing and
+  the WorkDatabase reflected-constructor R8 fix and actual-APK startup guard.
+- The maintainer reports RC testing complete and approves stable preparation;
+  this is not wider device certification. The exact stable APK still needs
+  maintainer physical verification and explicit publication approval. See
+  [stable handoff](docs/release/v1.0.0.md).
+
 ## [1.0.0-rc.1] - Preparation, not yet published
 
 - Prepare the first 1.0 release candidate (`versionCode 6`) from the validated
@@ -20,8 +33,9 @@ This project follows Semantic Versioning.
 - Retain schema 6, backup format 3 and the permanent signer for in-place updates
   from production-signed betas. Data-only backups do not include media files.
 - The maintainer confirmed Samsung and Fire Stick startup/primary flows on the
-  corrected pre-RC APK. RC.1 physical checks remain pending; see
-  [RC.1 handoff](docs/release/v1.0.0-rc.1.md).
+  corrected pre-RC APK. RC checks were pending at preparation; the maintainer
+  subsequently reported RC testing complete and approved stable promotion. See
+  [RC.1 handoff and closeout](docs/release/v1.0.0-rc.1.md).
 
 ## [0.2.0-beta.4] - 2026-09-02
 

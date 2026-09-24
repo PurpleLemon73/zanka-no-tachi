@@ -32,6 +32,7 @@ Public technical and product documentation is grouped by purpose.
 
 - [Android TV / Google TV / Fire OS experience](tv/TV_EXPERIENCE.md)
 - [Installing and updating production builds](release/INSTALLING.md)
+- [1.0.0 stable release notes and handoff (publication pending)](release/v1.0.0.md)
 - [1.0 RC.1 preparation and validation handoff](release/v1.0.0-rc.1.md)
 - [Release hardening](release/RELEASE_HARDENING.md)
 - [Maintainer release process](release/RELEASING.md)

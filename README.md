@@ -13,9 +13,10 @@ or use compatible public sources without making the product UI provider-aware.
 or [build it yourself](#build-from-source). One adaptive APK selects the mobile
 or 10-foot TV experience from Android's semantic device capabilities.
 
-The source tree is preparing **1.0.0-rc.1 (build 6)** for maintainer testing, not
-a published stable 1.0 release. The link above remains the last published beta.
-See the [RC.1 preparation and validation handoff](docs/release/v1.0.0-rc.1.md).
+The source tree is **1.0.0 (build 7)**, promoted from the maintainer-approved RC.1.
+The stable APK is awaiting final artifact verification and publication approval;
+it is **not yet a public release**. The link above remains the last published
+beta. See the [1.0.0 stable release handoff](docs/release/v1.0.0.md).
 
 ## See it in action
 
@@ -94,10 +95,11 @@ without touch.
 | Back | Hide controls or go back |
 
 Android TV and Google TV have emulator validation. The maintainer confirmed
-startup and primary flows on a Samsung phone and Fire TV Stick using the
-corrected pre-RC production APK. RC.1 itself still needs physical validation;
-this is not blanket Fire certification. Core Fire OS use requires no Google
-Play Services.
+Samsung/Fire Stick startup and primary flows after the production startup fix,
+then reported completed RC testing and approved promotion to 1.0.0. Per-action
+RC logs were not supplied; this is not blanket Fire certification. The newly
+versioned stable APK still requires its own physical check. Core Fire OS use
+requires no Google Play Services.
 
 ## Sources and local media
 
@@ -112,18 +114,19 @@ architecture. Physical paths are never canonical identity. Missing files remain
 repairable, and portable backups intentionally exclude media bytes and absolute
 paths.
 
-## Release candidate status
+## Stable release status
 
-`v0.2.0-beta.4` remains the published Android beta; `1.0.0-rc.1+6` is the current
-candidate, not stable 1.0. Production-signed beta.2 and later installations
-update in place with the same package and permanent certificate; do not clear
-their data. Legacy debug-signed beta.1 has a separate
+`1.0.0+7` is the first stable version, pending artifact approval and public
+distribution. `v0.2.0-beta.4` remains the last published Android beta.
+Production-signed beta.2 and later installations, including RC.1, update in
+place with the same package and permanent certificate; do not clear their
+data. Legacy debug-signed beta.1 has a separate
 [signing migration](docs/release/BETA1_TO_BETA2_MIGRATION.md).
 
 Production bundles no demo assets or Developer UI and selects only
 `video_player`; Better Player's native dependencies remain packaged but its
 experimental playback selection is development-only. Database schema 6 and
-data-only backup format 3 are unchanged for RC.1. Expect provider markup/delivery
+data-only backup format 3 are unchanged from RC.1. Expect provider markup/delivery
 changes and unsupported live installments. There is no cloud sync, background
 playback, TV recommendations/channels, or TV-specific manga reader.
 
